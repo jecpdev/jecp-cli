@@ -143,8 +143,11 @@ export async function initProviderCmd(opts: InitOpts): Promise<void> {
   info(`     ${dim('$')} curl -X POST https://jecp.dev/v1/providers/verify-dns -H "Authorization: Bearer <provider_api_key>"`);
   info(`     ${dim('$')} curl -X POST https://jecp.dev/v1/providers/connect-stripe -H "Authorization: Bearer <provider_api_key>" -d '{"country":"JP"}'`);
   info('');
-  info(`  5. Publish the manifest:`);
-  info(`     ${dim('$')} curl -X POST https://jecp.dev/v1/manifests -H "Authorization: Bearer <provider_api_key>" -F "manifest=@${outPath}"`);
+  info(`  5. Publish the manifest (raw YAML body, not multipart):`);
+  info(`     ${dim('$')} curl -X POST https://jecp.dev/v1/manifests \\`);
+  info(`         -H "Authorization: Bearer <provider_api_key>" \\`);
+  info(`         -H "Content-Type: application/x-yaml" \\`);
+  info(`         --data-binary @${outPath}`);
   info('');
 
   if (actions.some((a) => a.streaming)) {
