@@ -56,6 +56,7 @@ program
   .option('-b, --budget <usdc>', 'Mandate budget cap in USDC (e.g. 1.00)')
   .option('-t, --timeout <ms>', 'Request timeout in milliseconds')
   .option('--request-id <id>', 'Override idempotency key (default: auto UUID)')
+  .option('--stream', 'Stream the response as Server-Sent Events. Capability action must declare streaming: true.')
   .action(async (capability, action, opts) => {
     const { invokeCmd } = await import('./commands/invoke.js');
     await invokeCmd(capability, action, opts);

@@ -2,10 +2,18 @@ import { getClient } from '../sdk.js';
 import { JecpError } from '@jecpdev/sdk';
 import { emit, info, success, error, warn, fail, bold, dim } from '../output.js';
 
+interface InvokeOpts {
+  input?: string;
+  budget?: string;
+  timeout?: string;
+  requestId?: string;
+  stream?: boolean;
+}
+
 export async function invokeCmd(
   capability: string,
   action: string,
-  opts: { input?: string; budget?: string; timeout?: string; requestId?: string },
+  opts: InvokeOpts,
 ) {
   let input: unknown = {};
   if (opts.input) {
@@ -28,6 +36,11 @@ export async function invokeCmd(
   }
   if (opts.requestId !== undefined) {
     invokeOpts.requestId = opts.requestId;
+  }
+
+  if (opts.stream) {
+    await runStream(jecp, capability, action, input, invokeOpts);
+    return;
   }
 
   try {
@@ -79,4 +92,68 @@ export async function invokeCmd(
     }
     throw e;
   }
+}
+
+async function runStream(
+  jecp: ReturnType<typeof getClient>,
+  capability: string,
+  action: string,
+  input: unknown,
+  invokeOpts: { mandate?: { budget_usdc: number }; timeoutMs?: number; requestId?: string },
+): Promise<void> {
+  const stream = jecp.invokeStream(capability, action, input, invokeOpts);
+  let exitCode = 0;
+  try {
+    for await (const event of stream) {
+      switch (event.type) {
+        case 'chunk':
+          process.stdout.write(event.delta);
+          break;
+        case 'meter':
+          // surface meter events via stderr so JSON output stays clean if consumer pipes stdout
+          if (event.tokens !== undefined) {
+            process.stderr.write(dim(`\n[meter] tokens=${event.tokens}\n`));
+          }
+          break;
+        case 'completed':
+          process.stdout.write('\n');
+          success('Stream completed.');
+          info(`${bold('Billing:')}     ${
+            event.billing && event.billing.charged
+              ? `$${event.billing.amount_usdc} USDC (tx ${event.billing.transaction_id ?? '—'})`
+              : 'not charged'
+          }`);
+          break;
+        case 'error': {
+          process.stdout.write('\n');
+          error(`${event.error.code}: ${event.error.message}`);
+          exitCode = 1;
+          break;
+        }
+        case 'cancelled':
+          process.stdout.write('\n');
+          warn(`Cancelled${event.reason ? `: ${event.reason}` : ''}`);
+          if (event.billing && event.billing.charged) {
+            info(`Partial bill: $${event.billing.amount_usdc} USDC`);
+          }
+          exitCode = 1;
+          break;
+      }
+    }
+  } catch (e) {
+    if (e instanceof JecpError) {
+      error(`${e.code}: ${e.message}`);
+      if (e.nextAction) {
+        info('');
+        info(bold('Next action:'));
+        info(`  type: ${e.nextAction.type}`);
+        if ('hint' in e.nextAction && e.nextAction.hint) {
+          info(`  hint: ${e.nextAction.hint}`);
+        }
+      }
+      process.exit(1);
+    }
+    throw e;
+  }
+  if (exitCode !== 0) process.exit(exitCode);
 }
