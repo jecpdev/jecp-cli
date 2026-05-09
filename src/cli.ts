@@ -110,6 +110,18 @@ program
     await rotateKeyCmd(opts);
   });
 
+// S3-1 — Provider scaffolding (interactive jecp.yaml generator)
+program
+  .command('init-provider')
+  .description('Interactive scaffold of a JECP Provider manifest (jecp.yaml).')
+  .option('-o, --output <path>', 'Output file path (default jecp.yaml)')
+  .option('--yes', 'Skip overwrite confirmation')
+  .option('--example', 'Write a non-interactive example manifest (for CI / docs)')
+  .action(async (opts) => {
+    const { initProviderCmd } = await import('./commands/init-provider.js');
+    await initProviderCmd(opts);
+  });
+
 // W2 — Refund commands
 const refund = program.command('refund').description('Refund management (W2)');
 
