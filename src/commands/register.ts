@@ -1,7 +1,7 @@
 import { JecpClient } from '@jecpdev/sdk';
 import prompts from 'prompts';
-import { saveConfig, loadConfig } from '../config.js';
-import { emit, info, success, warn, bold, fail } from '../output.js';
+import { saveConfig, loadConfig, configFilePath } from '../config.js';
+import { emit, info, success, bold, fail, dim } from '../output.js';
 
 export async function registerCmd(opts: { name?: string; type?: string; description?: string }) {
   let { name, type, description } = opts;
@@ -30,27 +30,47 @@ export async function registerCmd(opts: { name?: string; type?: string; descript
     baseUrl,
   );
 
-  success(`Agent registered.`);
-  info('');
-  info(bold('Save these credentials — the api_key is shown only once:'));
-  info('');
-  info(`  AGENT_ID:   ${reg.agent_id}`);
-  info(`  API_KEY:    ${reg.api_key}`);
-  info(`  Free calls: ${reg.free_calls_remaining}`);
-  info('');
-
-  // Save to config
+  // Save credentials FIRST so the success message about auto-save can lead.
   const cfg = loadConfig();
   cfg.agent_id = reg.agent_id;
   cfg.api_key = reg.api_key;
   if (baseUrl !== 'https://jecp.dev') cfg.base_url = baseUrl;
   saveConfig(cfg);
-  success(`Credentials saved to ~/.jecp/config.json (mode 0600)`);
+
+  // Lead message: subsequent jecp commands work automatically.
+  success(`Agent registered. Credentials auto-saved to ${bold(configFilePath())} (mode 0600)`);
+  info(dim(`  → All subsequent jecp commands authenticate automatically. No env-var setup needed.`));
+  info('');
+
+  // Compact credentials block for users who want to copy elsewhere.
+  const freeCalls =
+    (reg as { free_calls_remaining?: number }).free_calls_remaining
+    ?? (reg as { benefits?: { free_api_calls?: number } }).benefits?.free_api_calls
+    ?? 100;
+  info(bold('Credentials (api_key shown ONLY ONCE — store externally if you need it elsewhere):'));
+  info(`  AGENT_ID:   ${reg.agent_id}`);
+  info(`  API_KEY:    ${reg.api_key}`);
+  info(`  Free calls: ${freeCalls}`);
+  info('');
+
+  // First-success suggestion — PM-identified friction: "capability_id を覚えていない"
+  info(bold('Try your first invocation now (uses 1 of your 100 free calls):'));
+  info(`  ${dim('$')} jecp invoke jobdonebot/content-factory translate \\`);
+  info(`        --input '{"text":"Hello","target_lang":"JA"}'`);
+  info('');
+  info(`  Then explore the catalog:`);
+  info(`  ${dim('$')} jecp catalog`);
+  info('');
 
   emit({
     agent_id: reg.agent_id,
     api_key: reg.api_key,
-    name: reg.name,
-    free_calls_remaining: reg.free_calls_remaining,
+    name: name,
+    free_calls_remaining: freeCalls,
+    config_file: configFilePath(),
+    next_step: {
+      command: 'jecp invoke jobdonebot/content-factory translate --input \'{"text":"Hello","target_lang":"JA"}\'',
+      description: `Try your first invocation (uses 1 of ${freeCalls} free calls)`,
+    },
   });
 }
