@@ -54,12 +54,17 @@ export async function registerCmd(opts: { name?: string; type?: string; descript
   info('');
 
   // First-success suggestion — PM-identified friction: "capability_id を覚えていない"
-  info(bold('Try your first invocation now (uses 1 of your 100 free calls):'));
-  info(`  ${dim('$')} jecp invoke jobdonebot/content-factory translate \\`);
-  info(`        --input '{"text":"Hello","target_lang":"JA"}'`);
+  info(bold('Next steps:'));
+  info(`  1. Browse the capability catalog (always free):`);
+  info(`     ${dim('$')} jecp catalog`);
   info('');
-  info(`  Then explore the catalog:`);
-  info(`  ${dim('$')} jecp catalog`);
+  info(`  2. Make your first invocation. ${dim('Each call costs ~$0.005 USDC from your wallet.')}`);
+  info(`     ${dim('$')} jecp topup 5    ${dim('# add $5 to wallet (Stripe Checkout)')}`);
+  info(`     ${dim('$')} jecp invoke jobdonebot/content-factory translate \\`);
+  info(`           --input '{"text":"Hello","target_lang":"JA"}'`);
+  info('');
+  info(`  3. Check your status anytime:`);
+  info(`     ${dim('$')} jecp status`);
   info('');
 
   emit({
@@ -68,9 +73,12 @@ export async function registerCmd(opts: { name?: string; type?: string; descript
     name: name,
     free_calls_remaining: freeCalls,
     config_file: configFilePath(),
-    next_step: {
-      command: 'jecp invoke jobdonebot/content-factory translate --input \'{"text":"Hello","target_lang":"JA"}\'',
-      description: `Try your first invocation (uses 1 of ${freeCalls} free calls)`,
-    },
+    next_steps: [
+      { command: 'jecp catalog', description: 'Browse capabilities (free)' },
+      { command: 'jecp topup 5', description: 'Add $5 USDC to wallet via Stripe' },
+      { command: 'jecp invoke jobdonebot/content-factory translate --input \'{"text":"Hello","target_lang":"JA"}\'',
+        description: 'Make your first invocation (~$0.005 USDC)' },
+      { command: 'jecp status', description: 'Check agent state and balance' },
+    ],
   });
 }
