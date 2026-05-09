@@ -99,6 +99,17 @@ program
     await doctorCmd();
   });
 
+// M2 — API key rotation (Phase B)
+program
+  .command('rotate-key')
+  .description('Rotate this agent\'s API key. Previous key remains valid for 7 days.')
+  .option('--grace-seconds <int>', 'Override grace window in seconds (60..604800)')
+  .option('--yes', 'Skip the interactive confirmation')
+  .action(async (opts) => {
+    const { rotateKeyCmd } = await import('./commands/rotate-key.js');
+    await rotateKeyCmd(opts);
+  });
+
 // W2 — Refund commands
 const refund = program.command('refund').description('Refund management (W2)');
 
