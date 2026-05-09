@@ -98,6 +98,65 @@ program
     await doctorCmd();
   });
 
+// W2 — Refund commands
+const refund = program.command('refund').description('Refund management (W2)');
+
+refund
+  .command('request <transaction_id>')
+  .description('Request a refund within 30 days of the original charge')
+  .requiredOption('--reason <text>', 'Reason (max 500 chars)')
+  .option('--evidence-url <url>', 'Optional URL to evidence (screenshot, log)')
+  .action(async (txId, opts) => {
+    const { refundRequestCmd } = await import('./commands/refund.js');
+    await refundRequestCmd(txId, opts);
+  });
+
+refund
+  .command('get <refund_id>')
+  .description('Read a refund by id')
+  .action(async (refundId) => {
+    const { refundGetCmd } = await import('./commands/refund.js');
+    await refundGetCmd(refundId);
+  });
+
+refund
+  .command('list')
+  .description('List your refunds')
+  .option('--limit <n>', 'Max items (1-200)', '50')
+  .action(async (opts) => {
+    const { refundListCmd } = await import('./commands/refund.js');
+    await refundListCmd(opts);
+  });
+
+// W4 — Webhook subscription commands
+const webhook = program.command('webhook').description('Webhook subscription management (W4)');
+
+webhook
+  .command('subscribe')
+  .description('Subscribe to webhook events. Returns hmac_secret (one-time)')
+  .requiredOption('--url <url>', 'Endpoint URL (must be https://)')
+  .option('--events <csv>', 'Comma-separated event types (omit for all)')
+  .action(async (opts) => {
+    const { webhookSubscribeCmd } = await import('./commands/webhook.js');
+    await webhookSubscribeCmd(opts);
+  });
+
+webhook
+  .command('list')
+  .description('List your webhook subscriptions')
+  .action(async () => {
+    const { webhookListCmd } = await import('./commands/webhook.js');
+    await webhookListCmd();
+  });
+
+webhook
+  .command('test <subscription_id>')
+  .description('Send a synthetic test event to your endpoint')
+  .action(async (subId) => {
+    const { webhookTestCmd } = await import('./commands/webhook.js');
+    await webhookTestCmd(subId);
+  });
+
 program.parseAsync(process.argv).catch((e: Error) => {
   fail(e.message);
 });
