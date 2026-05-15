@@ -3,6 +3,76 @@
 All notable changes to `@jecpdev/cli` are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.8.0] - 2026-05-16
+
+Closes the Provider onboarding loop end-to-end in the CLI. Before this
+release `jecp init-provider` scaffolded a `jecp.yaml`, but the remaining
+five steps (register → DNS publish → verify → Stripe Connect → publish
+manifest) were raw `curl` invocations with a manual retry wait for DNS
+propagation. v0.8.0 ships first-class commands and an auto-poll loop.
+
+Target metric: Provider TTV from ~3 days (manual DNS retry) to ~30 min.
+
+### Added
+
+- `jecp provider register` — interactive (or flag-driven) Provider
+  registration. POSTs `/v1/providers/register`, saves `provider_api_key`
+  + `hmac_secret` + `dns_token` to `~/.jecp/config.json` (mode 0600),
+  prints the DNS TXT record name + value. `--wait` chains into the
+  verify-dns poll loop so a single command completes the register + DNS
+  wait.
+- `jecp provider verify-dns` — polls `/v1/providers/verify-dns` every
+  10 s until the TXT propagates. Default 10-minute deadline,
+  `--timeout 5m`/`1h`/`300` (seconds) overrides. `--once` makes a single
+  attempt and exits 2 if not yet verified (CI signal).
+- `jecp provider me` — pretty-prints DNS / Stripe / endpoint / call
+  count from `/v1/providers/me`.
+- `jecp provider publish [file]` — POSTs YAML to `/v1/manifests`
+  (default file `jecp.yaml`), prints `capability_id` + status, surfaces
+  the auto-promote rule ("submitted until DNS+Stripe both verified").
+- `jecp provider connect-stripe` — gets the Stripe Connect Express
+  onboarding URL and prints it for manual browser opening (URL has a
+  short TTL so chained automation is intentionally avoided).
+
+### Changed
+
+- `jecp init-provider`'s "Next steps" footer now references the new
+  commands instead of `curl`, cutting onboarding doc surface area
+  roughly in half.
+
+### Config surface (additive)
+
+`~/.jecp/config.json` gains five Provider fields, all optional:
+
+```jsonc
+{
+  "provider_id":          "prov_…",
+  "provider_namespace":   "yourns",
+  "provider_api_key":     "jdb_pk_…",  // shown once, persisted automatically
+  "provider_hmac_secret": "base64…",
+  "provider_dns_token":   "…"          // kept so resume flows work
+}
+```
+
+Env-var override for scripted use:
+- `JECP_PROVIDER_ID`
+- `JECP_PROVIDER_KEY`
+
+Agent creds (`agent_id` / `api_key`) and Provider creds are independent
+— one operator may hold both, neither, or one. Each command surfaces
+a clear "run register first" hint if its required creds are missing.
+
+### Internal
+
+- `resolveProviderAuth()` parallel to `resolveAuth()`; same env-over-file
+  precedence pattern.
+- `parseTimeoutMs()` helper accepts bare seconds or `s/m/h` suffix,
+  capped at 1 h to keep CI loops sane.
+- Provider commands call `/v1/providers/*` and `/v1/manifests` via
+  direct `fetch` rather than the SDK — the JecpClient surface is
+  Agent-side only, and pulling Provider lifecycle into the SDK is
+  scope for a future release.
+
 ## [0.7.0] - 2026-05-15
 
 Aligns with `@jecpdev/sdk` v0.8.2 and `jecp-spec` v1.1.0 (x402 integration).

@@ -34,6 +34,25 @@ $ jecp invoke jobdonebot/content-factory translate \
   Balance:     $0.995 USDC
 ```
 
+## Quickstart — Provider in 30 minutes (v0.8.0)
+
+```bash
+$ jecp init-provider                            # interactive jecp.yaml scaffold
+$ jecp provider register \
+    --namespace myco --display-name "MyCo" \
+    --email ops@myco.example --endpoint https://myco.example/jecp \
+    --country JP --wait                         # auto-polls DNS until verified
+✓ Provider registered. Credentials saved to ~/.jecp/config.json
+  → Add this DNS TXT record:
+    _jecp.myco.example  TXT  "jecp-verify=tok_xyz"
+  Polling /v1/providers/verify-dns until propagation…
+✓ DNS verified after 3 attempts.
+
+$ jecp provider connect-stripe                  # open the URL in browser
+$ jecp provider publish jecp.yaml               # active once DNS+Stripe verified
+✓ Published myco/translate@1.0.0
+```
+
 ## Commands
 
 | Command | Description |
@@ -48,6 +67,11 @@ $ jecp invoke jobdonebot/content-factory translate \
 | `jecp doctor` | Diagnose connectivity, config, SDK version, x402 readiness |
 | `jecp wallet:link-usdc <addr>` | **v0.7.0** — Link Base USDC wallet for x402 payments |
 | `jecp init-provider` | Interactive jecp.yaml scaffold (now with x402 prompts) |
+| `jecp provider register` | **v0.8.0** — Register as Provider; saves creds, prints DNS TXT |
+| `jecp provider verify-dns` | **v0.8.0** — Auto-poll until DNS TXT propagates (`--once` for CI) |
+| `jecp provider publish [file]` | **v0.8.0** — Publish jecp.yaml to `/v1/manifests` |
+| `jecp provider me` | **v0.8.0** — Show Provider DNS/Stripe/endpoint status |
+| `jecp provider connect-stripe` | **v0.8.0** — Get Stripe Connect onboarding URL |
 | `jecp rotate-key` | Rotate this agent's API key (7-day grace) |
 | `jecp refund …` / `webhook …` | Refund + webhook subscription management |
 

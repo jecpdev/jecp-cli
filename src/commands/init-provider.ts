@@ -141,23 +141,22 @@ export async function initProviderCmd(opts: InitOpts): Promise<void> {
   info(`  1. Edit ${outPath} and fill in input_schema / output_schema for each action.`);
   info(`     ${dim('See spec/04-manifest.md §5 for the JSON Schema 2020-12 subset.')}`);
   info('');
-  info(`  2. Register your Provider (one-time, gets api_key + HMAC secret + DNS token):`);
-  info(`     ${dim('$')} curl -X POST https://jecp.dev/v1/providers/register \\`);
-  info(`         -H "Content-Type: application/json" \\`);
-  info(`         -d '{"namespace":"${provider.namespace}","display_name":"${provider.display_name}","endpoint_url":"${provider.endpoint}","support_email":"${provider.support_email ?? ''}","website":"${provider.website ?? ''}"}'`);
+  info(`  2. Register your Provider (auto-polls DNS until propagated):`);
+  info(`     ${dim('$')} jecp provider register \\`);
+  info(`           --namespace ${provider.namespace} \\`);
+  info(`           --display-name "${provider.display_name}" \\`);
+  info(`           --email ${provider.support_email ?? '<owner@example.com>'} \\`);
+  info(`           --endpoint ${provider.endpoint} \\`);
+  info(`           --country <ISO>  ${dim('# e.g. JP, US, DE')} \\`);
+  info(`           --wait           ${dim('# auto-poll verify-dns after register')}`);
   info('');
-  info(`  3. Add the DNS TXT record returned by register:`);
-  info(`     ${dim(`_jecp.<your-domain>  TXT  "<dns_verification_token>"`)}`);
+  info(`  3. Connect Stripe for USD payouts:`);
+  info(`     ${dim('$')} jecp provider connect-stripe`);
   info('');
-  info(`  4. Verify and connect Stripe:`);
-  info(`     ${dim('$')} curl -X POST https://jecp.dev/v1/providers/verify-dns -H "Authorization: Bearer <provider_api_key>"`);
-  info(`     ${dim('$')} curl -X POST https://jecp.dev/v1/providers/connect-stripe -H "Authorization: Bearer <provider_api_key>" -d '{"country":"JP"}'`);
-  info('');
-  info(`  5. Publish the manifest (raw YAML body, not multipart):`);
-  info(`     ${dim('$')} curl -X POST https://jecp.dev/v1/manifests \\`);
-  info(`         -H "Authorization: Bearer <provider_api_key>" \\`);
-  info(`         -H "Content-Type: application/x-yaml" \\`);
-  info(`         --data-binary @${outPath}`);
+  info(`  4. Publish the manifest:`);
+  info(`     ${dim('$')} jecp provider publish ${outPath}`);
+  info(`     ${dim('Auto-detects creds from config. Status auto-promotes to')}`);
+  info(`     ${dim('"active" once both DNS and Stripe are verified.')}`);
   info('');
 
   if (actions.some((a) => a.streaming)) {

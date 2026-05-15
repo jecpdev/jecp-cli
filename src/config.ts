@@ -24,6 +24,18 @@ export interface CliConfig {
   x402_signer_kind?: 'env' | 'file' | 'kms';
   /** v0.7.0 — Default `--pay` mode if the flag is omitted. */
   x402_pay_default?: 'wallet' | 'x402' | 'auto';
+
+  // ── v0.8.0 — Provider credentials (issued once at register) ──
+  // Stored separately from agent creds because the same operator may run
+  // both an Agent (consumer) and a Provider (producer) from one machine.
+  provider_id?: string;
+  provider_namespace?: string;
+  /** `jdb_pk_<48 hex>` — Bearer token for /v1/providers/* endpoints. */
+  provider_api_key?: string;
+  /** Base64 HMAC secret — used by Provider SDK to verify Hub-forwarded calls. */
+  provider_hmac_secret?: string;
+  /** TXT value to publish at `_jecp.<endpoint host>`. Kept so resume flows work. */
+  provider_dns_token?: string;
 }
 
 export function loadConfig(): CliConfig {
@@ -49,6 +61,27 @@ export function resolveAuth(): { agentId?: string; apiKey?: string; baseUrl?: st
   return {
     agentId: process.env.JECP_AGENT_ID ?? cfg.agent_id,
     apiKey: process.env.JECP_AGENT_KEY ?? cfg.api_key,
+    baseUrl: process.env.JECP_BASE_URL ?? cfg.base_url ?? 'https://jecp.dev',
+  };
+}
+
+/**
+ * v0.8.0 — Resolve Provider credentials, env-var priority over config file.
+ * Agent and Provider keys are independent: an operator may hold both, neither,
+ * or one. Commands decide which is required and surface a clear error if
+ * missing.
+ */
+export function resolveProviderAuth(): {
+  providerId?: string;
+  providerApiKey?: string;
+  namespace?: string;
+  baseUrl?: string;
+} {
+  const cfg = loadConfig();
+  return {
+    providerId: process.env.JECP_PROVIDER_ID ?? cfg.provider_id,
+    providerApiKey: process.env.JECP_PROVIDER_KEY ?? cfg.provider_api_key,
+    namespace: cfg.provider_namespace,
     baseUrl: process.env.JECP_BASE_URL ?? cfg.base_url ?? 'https://jecp.dev',
   };
 }

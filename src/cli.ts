@@ -11,7 +11,7 @@ const program = new Command();
 program
   .name('jecp')
   .description('Command-line interface for JECP — Joint Execution & Commerce Protocol')
-  .version('0.7.0')
+  .version('0.8.0')
   .option('--json', 'Machine-readable JSON output')
   .option('--base-url <url>', 'Override Hub URL (default https://jecp.dev)')
   .hook('preAction', (cmd) => {
@@ -162,6 +162,61 @@ refund
   .action(async (opts) => {
     const { refundListCmd } = await import('./commands/refund.js');
     await refundListCmd(opts);
+  });
+
+// v0.8.0 — Provider lifecycle (S3 UX P0: register + auto-poll verify-dns)
+const provider = program.command('provider').description('Provider lifecycle commands (v0.8.0)');
+
+provider
+  .command('register')
+  .description('Register as a Provider; saves api_key + hmac_secret + dns_token to config')
+  .option('-n, --namespace <ns>', 'Namespace (3-32 chars, [a-z0-9-])')
+  .option('--display-name <name>', 'Display name (1-120 chars)')
+  .option('-e, --email <email>', 'Owner email')
+  .option('--endpoint <url>', 'HTTPS endpoint that receives Hub-forwarded calls')
+  .option('-c, --country <iso>', 'ISO 3166-1 alpha-2 country code (e.g. JP)')
+  .option('--website <url>', 'Optional website URL')
+  .option('--usdc-address <0x...>', 'Optional Base USDC payout address (x402)')
+  .option('-w, --wait', 'After register, auto-poll verify-dns until propagated')
+  .option('-t, --timeout <duration>', 'Polling deadline when --wait (e.g. 5m, 1h; default 10m)')
+  .option('--yes', 'Skip overwrite confirmation if creds already saved')
+  .action(async (opts) => {
+    const { providerRegisterCmd } = await import('./commands/provider.js');
+    await providerRegisterCmd(opts);
+  });
+
+provider
+  .command('verify-dns')
+  .description('Poll /v1/providers/verify-dns until DNS TXT propagates (default 10m deadline)')
+  .option('-t, --timeout <duration>', 'Polling deadline (e.g. 5m, 1h; default 10m)')
+  .option('--once', 'Make one attempt and exit 2 if not yet verified (for CI)')
+  .action(async (opts) => {
+    const { providerVerifyDnsCmd } = await import('./commands/provider.js');
+    await providerVerifyDnsCmd(opts);
+  });
+
+provider
+  .command('me')
+  .description('Show Provider status (DNS, Stripe, total calls)')
+  .action(async () => {
+    const { providerMeCmd } = await import('./commands/provider.js');
+    await providerMeCmd();
+  });
+
+provider
+  .command('publish [file]')
+  .description('Publish a manifest YAML to /v1/manifests (default file: jecp.yaml)')
+  .action(async (file: string | undefined) => {
+    const { providerPublishCmd } = await import('./commands/provider.js');
+    await providerPublishCmd({ file });
+  });
+
+provider
+  .command('connect-stripe')
+  .description('Get Stripe Connect Express onboarding URL for USD payouts')
+  .action(async () => {
+    const { providerConnectStripeCmd } = await import('./commands/provider.js');
+    await providerConnectStripeCmd();
   });
 
 // W4 — Webhook subscription commands
