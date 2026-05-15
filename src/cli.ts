@@ -128,7 +128,10 @@ program
   .description('Interactive scaffold of a JECP Provider manifest (jecp.yaml).')
   .option('-o, --output <path>', 'Output file path (default jecp.yaml)')
   .option('--yes', 'Skip overwrite confirmation')
-  .option('--example', 'Write a non-interactive example manifest (for CI / docs)')
+  .option(
+    '--example [template]',
+    'Non-interactive scaffold. Bare flag writes a YAML stub; "hello-world" writes a runnable Provider (jecp.yaml + handler.mjs + package.json + README.md).',
+  )
   .action(async (opts) => {
     const { initProviderCmd } = await import('./commands/init-provider.js');
     await initProviderCmd(opts);

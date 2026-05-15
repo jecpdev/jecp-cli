@@ -37,7 +37,11 @@ $ jecp invoke jobdonebot/content-factory translate \
 ## Quickstart — Provider in 30 minutes (v0.8.0)
 
 ```bash
-$ jecp init-provider                            # interactive jecp.yaml scaffold
+$ jecp init-provider --example hello-world      # scaffold runnable starter
+✓ Scaffolded hello-world Provider in .
+  → jecp.yaml, handler.mjs, package.json, README.md
+
+$ npm install
 $ jecp provider register \
     --namespace myco --display-name "MyCo" \
     --email ops@myco.example --endpoint https://myco.example/jecp \
@@ -48,10 +52,15 @@ $ jecp provider register \
   Polling /v1/providers/verify-dns until propagation…
 ✓ DNS verified after 3 attempts.
 
+$ JECP_HMAC_SECRET=$(jq -r .provider_hmac_secret ~/.jecp/config.json) \
+    node handler.mjs &                          # local Provider running
 $ jecp provider connect-stripe                  # open the URL in browser
 $ jecp provider publish jecp.yaml               # active once DNS+Stripe verified
-✓ Published myco/translate@1.0.0
+✓ Published myco/echo@1.0.0
 ```
+
+For a fully interactive scaffold (without the hello-world starter),
+omit `--example`. The bare YAML stub is available with `--example`.
 
 ## Commands
 

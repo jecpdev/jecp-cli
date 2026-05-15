@@ -34,6 +34,14 @@ Target metric: Provider TTV from ~3 days (manual DNS retry) to ~30 min.
   onboarding URL and prints it for manual browser opening (URL has a
   short TTL so chained automation is intentionally avoided).
 
+- `jecp init-provider --example hello-world` — runnable Provider
+  starter (jecp.yaml + handler.mjs + package.json + README.md). The
+  handler uses Node 20+ stdlib `http.createServer` (zero non-SDK deps)
+  and integrates `JecpProvider.createHandler` for HMAC verification.
+  An operator can `npm install && node handler.mjs` and have a live,
+  spec-compliant endpoint in under a minute. Bare `--example` keeps
+  the legacy single-file YAML stub behavior.
+
 ### Changed
 
 - `jecp init-provider`'s "Next steps" footer now references the new

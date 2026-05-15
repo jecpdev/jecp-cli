@@ -1,6 +1,6 @@
 import prompts from 'prompts';
 import { writeFileSync, existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve, join } from 'node:path';
 import { emit, info, success, warn, bold, dim, fail } from '../output.js';
 import { isValidBaseAddress } from '../x402/config-ext.js';
 
@@ -13,8 +13,18 @@ interface X402ProviderConfig {
 interface InitOpts {
   output?: string;
   yes?: boolean;
-  /** When true, write a tiny example without prompting (for CI / docs). */
-  example?: boolean;
+  /**
+   * `true`         — write a tiny YAML stub (for CI / docs).
+   * `"hello-world"` — write a runnable Provider starter:
+   *   jecp.yaml + handler.mjs + package.json + README.md.
+   *   Operator can `npm install && node handler.mjs` and have a live
+   *   JECP-spec-compliant endpoint in under a minute, then run
+   *   `jecp provider register --wait` to complete onboarding.
+   *
+   * Commander parses `--example` as `true` and `--example hello-world`
+   * as `"hello-world"`, so a single flag covers both modes.
+   */
+  example?: boolean | string;
 }
 
 interface ActionDraft {
@@ -51,8 +61,19 @@ export async function initProviderCmd(opts: InitOpts): Promise<void> {
   }
 
   if (opts.example) {
-    writeFileSync(outPath, exampleYaml(), 'utf-8');
-    success(`Wrote example manifest to ${outPath}`);
+    if (opts.example === 'hello-world') {
+      scaffoldHelloWorld(outPath);
+      return;
+    }
+    if (opts.example === true) {
+      // bare `--example` keeps the legacy single-file behavior to avoid
+      // surprising existing CI scripts. `--example hello-world` opts
+      // into the runnable starter above.
+      writeFileSync(outPath, exampleYaml(), 'utf-8');
+      success(`Wrote example manifest to ${outPath}`);
+      return;
+    }
+    fail(`unknown --example template: '${opts.example}'. Try '--example' or '--example hello-world'.`);
     return;
   }
 
@@ -321,6 +342,338 @@ billing:
 
 deprecation:
   status: active
+`;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// v0.8.0 — Hello-world starter (runnable Provider in ~60s)
+// ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Write four files alongside the operator's chosen outPath:
+ *   <dir>/jecp.yaml       — minimal manifest declaring one action `echo`
+ *   <dir>/handler.mjs     — Node 20+ http.createServer using @jecpdev/sdk's
+ *                           JecpProvider.createHandler for HMAC verification
+ *   <dir>/package.json    — single dep (@jecpdev/sdk), npm start script
+ *   <dir>/README.md       — 5-step quickstart that ends with `jecp provider publish`
+ *
+ * Design notes:
+ *
+ * - `handler.mjs` uses the built-in `node:http` rather than Express / Hono so
+ *   the starter has exactly one runtime dep — fewer install failures for
+ *   evaluators on flaky networks. We adapt Node's IncomingMessage to the
+ *   fetch-API `Request` that JecpProvider expects via a small bridge.
+ *
+ * - The endpoint URL in jecp.yaml is intentionally `https://YOUR_PUBLIC_URL/jecp`
+ *   (placeholder) — the operator typically tunnels via ngrok/cloudflared
+ *   before running register. We surface this expectation in the README.
+ *
+ * - We refuse to overwrite existing handler.mjs / package.json / README.md
+ *   without --yes. That's the same posture as the jecp.yaml overwrite guard
+ *   in the parent flow, but applied per-file because operators may have
+ *   already started filling in handler.mjs and we don't want to clobber it.
+ */
+function scaffoldHelloWorld(yamlPath: string): void {
+  const dir = dirname(yamlPath);
+  const files = {
+    yaml: yamlPath,
+    handler: join(dir, 'handler.mjs'),
+    pkg: join(dir, 'package.json'),
+    readme: join(dir, 'README.md'),
+  };
+
+  const conflicts = [
+    [files.handler, 'handler.mjs'],
+    [files.pkg, 'package.json'],
+    [files.readme, 'README.md'],
+  ].filter(([p]) => existsSync(p));
+  if (conflicts.length > 0) {
+    fail(
+      `would overwrite ${conflicts.map(([, n]) => n).join(', ')} in ${dir}. ` +
+        `Rerun in an empty directory, or move these files first.`,
+    );
+    return; // defensive — fail() exits, but tests may mock process.exit
+  }
+
+  writeFileSync(files.yaml, helloWorldYaml(), 'utf-8');
+  writeFileSync(files.handler, helloWorldHandler(), 'utf-8');
+  writeFileSync(files.pkg, helloWorldPackageJson(), 'utf-8');
+  writeFileSync(files.readme, helloWorldReadme(), 'utf-8');
+
+  emit(
+    {
+      scaffolded: 'hello-world',
+      files: Object.values(files),
+      next_steps: [
+        'npm install',
+        'JECP_HMAC_SECRET=<from-register> node handler.mjs',
+        'jecp provider register --endpoint <your-public-url>/jecp --wait',
+        'jecp provider publish jecp.yaml',
+      ],
+    },
+    () => {
+      success(`Scaffolded hello-world Provider in ${dir}`);
+      info('');
+      info(bold('Quick start:'));
+      info(`  ${dim('$')} cd ${dir}`);
+      info(`  ${dim('$')} npm install`);
+      info(`  ${dim('$')} JECP_HMAC_SECRET=<from-register> node handler.mjs`);
+      info('');
+      info(`Then in another terminal:`);
+      info(`  ${dim('$')} jecp provider register --endpoint <your-public-url>/jecp --wait`);
+      info(`  ${dim('$')} jecp provider publish jecp.yaml`);
+      info('');
+      info(`See ${join(dir, 'README.md')} for the full walkthrough.`);
+    },
+  );
+}
+
+function helloWorldYaml(): string {
+  return `# Hello-world JECP Provider manifest (generated by \`jecp init-provider --example hello-world\`)
+# Replace YOUR_PUBLIC_URL with your tunnel (ngrok / cloudflared) or deployed host.
+
+namespace: hello-world
+display_name: "Hello World"
+website: "https://example.com"
+support_email: "ops@example.com"
+
+capability: echo
+version: 1.0.0
+description: "Echoes back the input text. Smallest valid Provider for JECP onboarding."
+tags: ["example", "hello-world"]
+
+endpoint: "https://YOUR_PUBLIC_URL/jecp"
+streaming: false
+
+authentication:
+  type: api_key
+  header_name: x-jecp-signature
+
+actions:
+  - id: echo
+    name: "Echo"
+    description: "Returns the input text unchanged."
+    streaming: false
+    pricing:
+      base: "$0.001"
+      currency: USDC
+      model: per_call
+    trust_tier_required: bronze
+    input_schema:
+      type: object
+      required: ["text"]
+      properties:
+        text: { type: string, maxLength: 5000 }
+    output_schema:
+      type: object
+      properties:
+        text: { type: string }
+    examples:
+      - input: { text: "Hello" }
+        output: { text: "Hello" }
+    side_effects:
+      external_api_call: false
+      stores_data: false
+      modifies_state: false
+      sends_email: false
+    sla:
+      latency_p95_ms: 100
+      timeout_ms: 5000
+
+compliance:
+  pii_handling: process_only_no_store
+  gdpr_compliant: true
+  data_residency: ["US"]
+
+billing:
+  payout_currency: USD
+  stripe_connect_required: true
+
+deprecation:
+  status: active
+`;
+}
+
+function helloWorldHandler(): string {
+  return `// JECP hello-world Provider — Node 20+ stdlib HTTP server.
+// Generated by \`jecp init-provider --example hello-world\`.
+//
+// JECP_HMAC_SECRET is the base64 secret returned by /v1/providers/register;
+// the CLI saved it to ~/.jecp/config.json under \`provider_hmac_secret\`.
+// You can also pass it on the command line:
+//   JECP_HMAC_SECRET=<secret> node handler.mjs
+//
+// The endpoint URL configured in jecp.yaml must point at this server.
+// Typical local-dev setup:
+//   $ node handler.mjs           # listens on 0.0.0.0:3000
+//   $ ngrok http 3000            # public HTTPS URL → endpoint: in jecp.yaml
+
+import { createServer } from 'node:http';
+import { JecpProvider } from '@jecpdev/sdk';
+
+const HMAC_SECRET = process.env.JECP_HMAC_SECRET;
+if (!HMAC_SECRET) {
+  console.error('JECP_HMAC_SECRET env var required. Run \`jecp provider register\` first.');
+  process.exit(1);
+}
+
+const provider = new JecpProvider({ hmacSecret: HMAC_SECRET });
+
+// Your business logic — for hello-world we just echo input.text back.
+// Replace this with whatever your capability actually does.
+const echoHandler = provider.createHandler(async (req) => {
+  if (req.action !== 'echo') {
+    throw new Error('unsupported action: ' + req.action);
+  }
+  const input = req.input;
+  if (!input || typeof input.text !== 'string') {
+    throw new Error('input.text (string) required');
+  }
+  return { text: input.text };
+});
+
+// Bridge node:http IncomingMessage → fetch-API Request so JecpProvider's
+// createHandler can verify the HMAC and parse the JECP envelope.
+async function toFetchRequest(req) {
+  const chunks = [];
+  for await (const c of req) chunks.push(c);
+  const body = Buffer.concat(chunks);
+  const headers = new Headers();
+  for (const [k, v] of Object.entries(req.headers)) {
+    if (Array.isArray(v)) headers.set(k, v.join(', '));
+    else if (v != null) headers.set(k, String(v));
+  }
+  return new Request(\`http://localhost\${req.url}\`, {
+    method: req.method,
+    headers,
+    body: req.method === 'GET' || req.method === 'HEAD' ? undefined : body,
+  });
+}
+
+const server = createServer(async (req, res) => {
+  if (req.method === 'GET' && req.url === '/healthz') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ok' }));
+    return;
+  }
+  if (req.method !== 'POST' || req.url !== '/jecp') {
+    res.writeHead(404);
+    res.end();
+    return;
+  }
+  try {
+    const fetchReq = await toFetchRequest(req);
+    const fetchRes = await echoHandler(fetchReq);
+    res.writeHead(fetchRes.status, Object.fromEntries(fetchRes.headers));
+    res.end(await fetchRes.text());
+  } catch (e) {
+    console.error('handler error:', e);
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ jecp: '1.0', status: 'failed', error: { code: 'INTERNAL', message: String(e) } }));
+  }
+});
+
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+server.listen(PORT, () => {
+  console.log(\`Hello-world JECP Provider listening on http://localhost:\${PORT}/jecp\`);
+  console.log(\`Health check:  http://localhost:\${PORT}/healthz\`);
+});
+`;
+}
+
+function helloWorldPackageJson(): string {
+  return `{
+  "name": "jecp-hello-world",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node handler.mjs"
+  },
+  "dependencies": {
+    "@jecpdev/sdk": "^0.8.3"
+  }
+}
+`;
+}
+
+function helloWorldReadme(): string {
+  return `# JECP hello-world Provider
+
+A runnable Provider that echoes input text back. The smallest valid
+implementation of the JECP spec — useful for verifying registration,
+DNS, Stripe Connect, and manifest publish work end-to-end before
+porting your real API.
+
+## Prerequisites
+
+- Node 20+
+- A public HTTPS URL (e.g. \`ngrok http 3000\` or a deployed host)
+- \`@jecpdev/cli\` installed: \`npm i -g @jecpdev/cli\`
+
+## 5-minute onboarding
+
+\`\`\`bash
+# 1. Install dep
+npm install
+
+# 2. Get a public HTTPS URL (in another terminal)
+ngrok http 3000
+# → copy the https://....ngrok.io URL
+
+# 3. Register as a Provider — auto-polls DNS until propagated
+jecp provider register \\
+  --namespace my-hello-world \\
+  --display-name "Hello World" \\
+  --email you@example.com \\
+  --endpoint https://YOUR_NGROK_URL/jecp \\
+  --country JP \\
+  --wait
+
+# The CLI prints the DNS TXT record to add. After adding it the
+# auto-poll completes (typically 30 s – 2 min). The provider_hmac_secret
+# is saved to ~/.jecp/config.json automatically.
+
+# 4. Start the Provider with the HMAC secret from step 3
+JECP_HMAC_SECRET="$(jq -r .provider_hmac_secret ~/.jecp/config.json)" node handler.mjs &
+
+# 5. Connect Stripe (opens onboarding URL in your browser)
+jecp provider connect-stripe
+
+# 6. Edit jecp.yaml — replace YOUR_PUBLIC_URL with your ngrok host, then:
+jecp provider publish jecp.yaml
+\`\`\`
+
+Once DNS and Stripe are both verified, the capability auto-promotes to
+\`active\` and is discoverable via \`jecp catalog --namespace my-hello-world\`.
+
+## What's in this directory
+
+| File | Role |
+|---|---|
+| \`jecp.yaml\` | Manifest. Declares one action (\`echo\`) at \`$0.001\`/call. |
+| \`handler.mjs\` | HTTP server. Verifies HMAC, parses JECP envelope, returns echo. |
+| \`package.json\` | Single dep on \`@jecpdev/sdk\`. \`npm start\` runs the handler. |
+| \`README.md\` | This file. |
+
+## Replacing the example with your real capability
+
+1. Edit \`jecp.yaml\`:
+   - \`namespace:\`, \`capability:\`, \`description:\`, \`pricing.base:\`
+   - \`input_schema\` / \`output_schema\` (JSON Schema 2020-12 subset)
+2. Edit \`handler.mjs\`:
+   - Replace the body of \`provider.createHandler(async (req) => { ... })\`
+     with your business logic. \`req.input\` is the validated payload.
+3. Bump \`version:\` in \`jecp.yaml\` and re-run \`jecp provider publish\`.
+
+## Spec links
+
+- Manifest format: https://github.com/jecpdev/jecp-spec/blob/main/spec/04-manifest.md
+- HMAC signing: https://github.com/jecpdev/jecp-spec/blob/main/spec/03-auth.md
+- Error catalog: https://github.com/jecpdev/jecp-spec/blob/main/spec/05-errors.md
 `;
 }
 
