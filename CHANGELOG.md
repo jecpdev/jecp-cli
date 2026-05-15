@@ -1,0 +1,88 @@
+# Changelog
+
+All notable changes to `@jecpdev/cli` are documented here.
+Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+## [0.7.0] - 2026-05-15
+
+Aligns with `@jecpdev/sdk` v0.8.2 and `jecp-spec` v1.1.0 (x402 integration).
+Backward-compatible — `--pay` defaults to `auto`, which behaves identically
+to pre-0.7 for capabilities that don't accept x402.
+
+Cites the **x402 Integration Locked Design v1.1.1**
+(`docs/jecp/x402-integration-locked-design.md`) §6.3 (Developer UX) and
+Panel 4 §B.2 / §C (CLI surface).
+
+### Added
+
+#### New command
+
+- `jecp wallet:link-usdc <address> [--signer env|file|kms] [--default wallet|x402|auto]`
+  Stores the agent's Base wallet address + signer kind in `~/.jecp/config.json`.
+  Validates `0x` + 40 hex chars at the CLI layer for fast feedback. Does NOT
+  read or store the private key (the CLI never holds keys).
+
+#### New flag
+
+- `jecp invoke --pay <wallet|x402|auto>` — override the payment rail for a
+  single invoke. Default reads from `x402_pay_default` in config, falling
+  back to `'auto'`. When `--pay x402` and no wallet linked, fails fast with
+  a clear "run wallet:link-usdc first" message.
+
+#### Doctor expansion (4 new checks)
+
+`jecp doctor` now runs:
+
+- `x402.signer_present` — config has wallet:link-usdc done; also warns if
+  `BASE_PRIVATE_KEY` env var is missing when `signer_kind=env`
+- `x402.facilitator_reachable` — GET `$X402_FACILITATOR_URL` (default
+  `https://x402.org/facilitator`), <2s timeout
+- `x402.base_rpc_reachable` — JSON-RPC `eth_chainId` against
+  `$BASE_RPC_URL` (default `https://mainnet.base.org`); verifies chain
+  is `0x2105` (mainnet) or `0x14a34` (Sepolia)
+- `x402.splitter_address_correct` — pulls `/v1/capabilities` and confirms
+  at least one capability advertises `payment_methods: [..., x402]` (full
+  splitter-address cross-check lives in the SDK once the Hub publishes
+  the address in the catalog response — TODO post-Hub-v1.1.0)
+
+#### init-provider extensions
+
+`jecp init-provider` wizard now asks:
+
+- "Accept x402 (USDC on Base) payments? (Y/n)" — default Y per locked
+  design §6.2 (hybrid mode is the recommended default)
+- "USDC payout address (Base mainnet):" — validated against the
+  `0x` + 40 hex regex
+
+Generated manifest emits `payment_methods: ["stripe", "x402"]` by default
+(or `["stripe"]` if operator opts out). New top-level `usdc_payout_address`
+field is emitted in the Provider block when x402 is accepted.
+
+The optional 1-wei USDC test transfer (Panel 4 §C.4 item 8) is documented
+as a runtime step rather than executed by the wizard — running on-chain
+transactions from a scaffold tool is an unexpected side effect.
+
+#### CLI version
+
+- `--version` now reports `0.7.0`.
+- Peer/dep range bumped: `@jecpdev/sdk` `^0.5.0` → `^0.8.2`.
+
+### Behavior
+
+- Agents already running v0.6.x see zero change unless they pass `--pay`
+  or run `wallet:link-usdc`. Default `--pay` mode is read from config
+  (falls back to `auto`).
+- `--pay x402` without a linked wallet fails fast at the CLI; SDK is never
+  called with an unfulfillable contract.
+- After successful x402 invocation, the CLI prints a "Payment receipt
+  (x402)" block with `txHash`, `network`, `amount`, and a Basescan link.
+
+### Internal
+
+- The CLI does NOT add `ethers` or `viem` as a hard dependency. The
+  `--pay x402` path uses `require('ethers')` inside the signer builder
+  with a graceful fallback message — operators who want x402 install
+  `ethers` (or use the SDK directly with their preferred adapter).
+- Config file `~/.jecp/config.json` schema extended with optional
+  `x402_wallet_address`, `x402_signer_kind`, `x402_pay_default` fields.
+  Old configs continue to load without migration.

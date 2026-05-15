@@ -1,5 +1,6 @@
-import { getClient } from '../sdk.js';
+import { getClientWithPayment } from '../sdk.js';
 import { JecpError } from '@jecpdev/sdk';
+import type { JecpClient, X402Receipt } from '@jecpdev/sdk';
 import { emit, info, success, error, warn, fail, bold, dim } from '../output.js';
 
 interface InvokeOpts {
@@ -8,6 +9,21 @@ interface InvokeOpts {
   timeout?: string;
   requestId?: string;
   stream?: boolean;
+  /** v0.7.0 — payment rail to use. Defaults to config.x402_pay_default or 'auto'. */
+  pay?: 'wallet' | 'x402' | 'auto';
+}
+
+/**
+ * Print the x402 payment receipt block (Locked design §6.3 Panel 4 receipt shape).
+ */
+function printX402Receipt(payment: X402Receipt): void {
+  info('');
+  info(bold('Payment receipt (x402):'));
+  info(`${dim('  method:')}     x402`);
+  info(`${dim('  txHash:')}     ${payment.txHash}`);
+  info(`${dim('  network:')}    ${payment.networkId}`);
+  info(`${dim('  amount:')}     $${payment.amount_usd} (${payment.amount_usdc} USDC micros)`);
+  info(`${dim('  Basescan:')}   https://basescan.org/tx/${payment.txHash}`);
 }
 
 export async function invokeCmd(
@@ -24,7 +40,7 @@ export async function invokeCmd(
     }
   }
 
-  const jecp = getClient();
+  const jecp = getClientWithPayment({ ...(opts.pay !== undefined && { pay: opts.pay }) });
   const invokeOpts: { mandate?: { budget_usdc: number }; timeoutMs?: number; requestId?: string } = {};
   if (opts.budget !== undefined) {
     const b = parseFloat(opts.budget);
@@ -53,6 +69,7 @@ export async function invokeCmd(
         wallet_balance_after: r.wallet_balance_after,
         attempts: r.attempts,
         request_id: r.request_id,
+        ...(r.payment && { payment: { ...r.payment, amount_usdc: r.payment.amount_usdc.toString() } }),
       },
       () => {
         success('Invocation complete.');
@@ -68,6 +85,9 @@ export async function invokeCmd(
         }
         if (r.attempts > 0) {
           warn(`Took ${r.attempts + 1} attempts (auto-retried)`);
+        }
+        if (r.payment) {
+          printX402Receipt(r.payment);
         }
       },
     );
@@ -95,7 +115,7 @@ export async function invokeCmd(
 }
 
 async function runStream(
-  jecp: ReturnType<typeof getClient>,
+  jecp: JecpClient,
   capability: string,
   action: string,
   input: unknown,

@@ -1,10 +1,12 @@
-import { resolveAuth, configFilePath } from '../config.js';
+import { resolveAuth, configFilePath, loadConfig } from '../config.js';
 import { existsSync } from 'node:fs';
 import { emit, info, success, error, warn, bold, dim } from '../output.js';
 
 interface Check { name: string; ok: boolean; detail?: string; latency_ms?: number }
 
 const VERSION_NPM_BASE = 'https://registry.npmjs.org';
+const DEFAULT_FACILITATOR_URL = 'https://x402.org/facilitator';
+const DEFAULT_BASE_RPC_URL = 'https://mainnet.base.org';
 
 export async function doctorCmd() {
   info(bold('JECP CLI — Diagnostic Report'));
@@ -167,6 +169,11 @@ export async function doctorCmd() {
     checks.push({ name: 'node_version', ok: false, detail: nodeVersion });
   }
 
+  // ─── x402 readiness (v0.7.0) ────────────────────────────────────────────
+  info('');
+  info(bold('── x402 ──'));
+  await runX402Checks(checks, baseUrl);
+
   // ─── Summary ────────────────────────────────────────────────────────────
   info('');
   info('─'.repeat(60));
@@ -179,6 +186,127 @@ export async function doctorCmd() {
   }
 
   emit({ checks, all_ok: failed === 0 });
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// v0.7.0 — x402 readiness checks (Locked design §6.3 Panel 4 §C)
+// ──────────────────────────────────────────────────────────────────────
+
+export async function runX402Checks(checks: Check[], baseUrl: string): Promise<void> {
+  await checkSignerPresent(checks);
+  await checkFacilitatorReachable(checks);
+  await checkBaseRpcReachable(checks);
+  await checkSplitterAddressCorrect(checks, baseUrl);
+}
+
+async function checkSignerPresent(checks: Check[]): Promise<void> {
+  const cfg = loadConfig();
+  if (cfg.x402_wallet_address) {
+    success(`x402 signer configured: ${cfg.x402_wallet_address} (${cfg.x402_signer_kind ?? 'env'})`);
+    checks.push({
+      name: 'x402.signer_present',
+      ok: true,
+      detail: `${cfg.x402_wallet_address} via ${cfg.x402_signer_kind ?? 'env'}`,
+    });
+    if ((cfg.x402_signer_kind ?? 'env') === 'env' && !process.env.BASE_PRIVATE_KEY) {
+      warn('  BASE_PRIVATE_KEY env var is NOT set — x402 signing will fail at runtime.');
+    }
+  } else {
+    warn(`x402 signer NOT configured (run \`jecp wallet:link-usdc 0x...\` to enable x402 mode)`);
+    checks.push({ name: 'x402.signer_present', ok: false });
+  }
+}
+
+async function checkFacilitatorReachable(checks: Check[]): Promise<void> {
+  const url = process.env.X402_FACILITATOR_URL ?? DEFAULT_FACILITATOR_URL;
+  const start = Date.now();
+  try {
+    const r = await fetchWithTimeout(url, 2_000);
+    const latency = Date.now() - start;
+    // 200/404/405 are all "reachable" — only 5xx counts as degraded.
+    const ok = r.status < 500;
+    if (ok) {
+      success(`x402 facilitator reachable: ${url} (${latency}ms)`);
+      checks.push({ name: 'x402.facilitator_reachable', ok: true, detail: url, latency_ms: latency });
+    } else {
+      error(`x402 facilitator degraded: ${url} returned ${r.status}`);
+      checks.push({ name: 'x402.facilitator_reachable', ok: false, detail: `${url} status=${r.status}`, latency_ms: latency });
+    }
+  } catch (e) {
+    error(`x402 facilitator unreachable: ${(e as Error).message}`);
+    checks.push({ name: 'x402.facilitator_reachable', ok: false, detail: (e as Error).message });
+  }
+}
+
+async function checkBaseRpcReachable(checks: Check[]): Promise<void> {
+  const url = process.env.BASE_RPC_URL ?? DEFAULT_BASE_RPC_URL;
+  const start = Date.now();
+  try {
+    const r = await fetchWithTimeout(url, 2_000, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_chainId' }),
+    });
+    const latency = Date.now() - start;
+    if (r.ok) {
+      const body = (await r.json().catch(() => ({}))) as { result?: string };
+      const chainHex = body.result;
+      const expectedHex = '0x2105'; // 8453 = Base mainnet
+      const expectedHexSep = '0x14a34'; // 84532 = Base Sepolia
+      if (chainHex === expectedHex) {
+        success(`Base RPC reachable: ${url} chain=base (${latency}ms)`);
+        checks.push({ name: 'x402.base_rpc_reachable', ok: true, detail: 'chain=base mainnet', latency_ms: latency });
+      } else if (chainHex === expectedHexSep) {
+        success(`Base RPC reachable: ${url} chain=base-sepolia (${latency}ms)`);
+        checks.push({ name: 'x402.base_rpc_reachable', ok: true, detail: 'chain=base-sepolia', latency_ms: latency });
+      } else {
+        warn(`Base RPC returned unexpected chainId ${chainHex} — expected 0x2105 (Base mainnet)`);
+        checks.push({ name: 'x402.base_rpc_reachable', ok: false, detail: `wrong chain: ${chainHex}` });
+      }
+    } else {
+      error(`Base RPC degraded: ${url} returned ${r.status}`);
+      checks.push({ name: 'x402.base_rpc_reachable', ok: false, detail: `status=${r.status}` });
+    }
+  } catch (e) {
+    error(`Base RPC unreachable: ${(e as Error).message}`);
+    checks.push({ name: 'x402.base_rpc_reachable', ok: false, detail: (e as Error).message });
+  }
+}
+
+async function checkSplitterAddressCorrect(checks: Check[], baseUrl: string): Promise<void> {
+  // Pull /v1/capabilities and confirm AT LEAST ONE x402-accepting capability
+  // is visible. Full splitter-address cross-check arrives once the Hub
+  // publishes the address in the catalog response (TODO post-Hub-v1.1.0).
+  try {
+    const r = await fetchWithTimeout(`${baseUrl}/v1/capabilities?page_size=200`, 5_000);
+    if (!r.ok) {
+      warn(`Could not load /v1/capabilities (status ${r.status}); splitter check skipped`);
+      checks.push({ name: 'x402.splitter_address_correct', ok: false, detail: `catalog status=${r.status}` });
+      return;
+    }
+    const body = (await r.json()) as {
+      third_party_capabilities?: Array<{
+        id?: string;
+        manifest?: {
+          actions?: Array<{ pricing?: { payment_methods?: string[] } }>;
+        };
+      }>;
+    };
+    const items = body.third_party_capabilities ?? [];
+    const hasX402 = items.some((c) =>
+      c.manifest?.actions?.some((a) => a.pricing?.payment_methods?.includes('x402'))
+    );
+    if (hasX402) {
+      success(`Splitter check: catalog advertises ${dim('payment_methods: [..., x402]')} capabilities`);
+      checks.push({ name: 'x402.splitter_address_correct', ok: true, detail: 'x402 in catalog' });
+    } else {
+      warn(`No x402-accepting capabilities visible in catalog yet (Hub may not have GA'd v1.1.0)`);
+      checks.push({ name: 'x402.splitter_address_correct', ok: false, detail: 'no x402 capabilities' });
+    }
+  } catch (e) {
+    warn(`Splitter check failed: ${(e as Error).message}`);
+    checks.push({ name: 'x402.splitter_address_correct', ok: false, detail: (e as Error).message });
+  }
 }
 
 async function fetchWithTimeout(url: string, timeoutMs: number, init?: RequestInit): Promise<Response> {

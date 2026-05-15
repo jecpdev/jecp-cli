@@ -14,6 +14,16 @@ export interface CliConfig {
   api_key?: string;
   base_url?: string;
   default_namespace?: string;
+  /** v0.7.0 — Base wallet address (Checksum or lowercase 0x40 hex). */
+  x402_wallet_address?: `0x${string}`;
+  /**
+   * v0.7.0 — How the SDK should access the private key when it builds a
+   * Signer. The CLI itself does NOT hold private keys; this is a hint for
+   * downstream scripts.
+   */
+  x402_signer_kind?: 'env' | 'file' | 'kms';
+  /** v0.7.0 — Default `--pay` mode if the flag is omitted. */
+  x402_pay_default?: 'wallet' | 'x402' | 'auto';
 }
 
 export function loadConfig(): CliConfig {

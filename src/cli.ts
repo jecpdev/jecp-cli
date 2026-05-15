@@ -11,7 +11,7 @@ const program = new Command();
 program
   .name('jecp')
   .description('Command-line interface for JECP — Joint Execution & Commerce Protocol')
-  .version('0.1.0')
+  .version('0.7.0')
   .option('--json', 'Machine-readable JSON output')
   .option('--base-url <url>', 'Override Hub URL (default https://jecp.dev)')
   .hook('preAction', (cmd) => {
@@ -57,9 +57,21 @@ program
   .option('-t, --timeout <ms>', 'Request timeout in milliseconds')
   .option('--request-id <id>', 'Override idempotency key (default: auto UUID)')
   .option('--stream', 'Stream the response as Server-Sent Events. Capability action must declare streaming: true.')
+  .option('--pay <mode>', 'v0.7.0 — Payment rail: wallet|x402|auto (default: from config or "auto")')
   .action(async (capability, action, opts) => {
     const { invokeCmd } = await import('./commands/invoke.js');
     await invokeCmd(capability, action, opts);
+  });
+
+// v0.7.0 — x402 wallet linking (Locked design §6.3 + Panel 4 §B.2)
+program
+  .command('wallet:link-usdc <address>')
+  .description('Store your Base USDC wallet address for x402 payments (v0.7.0)')
+  .option('--signer <kind>', 'How the SDK accesses the private key: env|file|kms', 'env')
+  .option('--default <mode>', 'Default --pay mode if flag omitted: wallet|x402|auto')
+  .action(async (address, opts) => {
+    const { walletLinkUsdcCmd } = await import('./commands/wallet-link-usdc.js');
+    await walletLinkUsdcCmd(address, opts);
   });
 
 program

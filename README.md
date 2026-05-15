@@ -41,11 +41,15 @@ $ jecp invoke jobdonebot/content-factory translate \
 | `jecp register` | Register a new agent (interactive or via flags) |
 | `jecp login` | Save existing agent credentials |
 | `jecp logout` | Clear stored credentials |
-| `jecp invoke <cap> <action>` | Invoke a capability action |
+| `jecp invoke <cap> <action>` | Invoke a capability action (`--pay wallet\|x402\|auto`) |
 | `jecp catalog` | List capabilities (paginated) |
 | `jecp topup <amount>` | Top up wallet (5/20/100 USDC) |
 | `jecp status` | Show health, balance, agent info |
-| `jecp doctor` | Diagnose connectivity, config, SDK version |
+| `jecp doctor` | Diagnose connectivity, config, SDK version, x402 readiness |
+| `jecp wallet:link-usdc <addr>` | **v0.7.0** — Link Base USDC wallet for x402 payments |
+| `jecp init-provider` | Interactive jecp.yaml scaffold (now with x402 prompts) |
+| `jecp rotate-key` | Rotate this agent's API key (7-day grace) |
+| `jecp refund …` / `webhook …` | Refund + webhook subscription management |
 
 Run `jecp <command> --help` for full options.
 
@@ -86,6 +90,68 @@ jecp catalog --page-size 100 --namespace jobdonebot
 JECP_AGENT_ID=jdb_ag_... JECP_AGENT_KEY=jdb_ak_... \
   jecp invoke a/b c --json | jq '.output'
 ```
+
+## x402 quickstart (v0.7.0)
+
+JECP supports **x402 (USDC on Base)** as a parallel payment rail alongside the
+default Stripe-funded wallet. Per-call settlement, lower fees, no balance
+required.
+
+### 1. Link your Base wallet address
+
+```bash
+jecp wallet:link-usdc 0xAb11Cd22Ef33aaBBCcDDeeFF0011223344556677
+# → stored in ~/.jecp/config.json (CLI never holds the private key)
+```
+
+The CLI accepts three signer kinds via `--signer`:
+
+- `env` (default) — SDK reads `BASE_PRIVATE_KEY` from env at invoke time
+- `file` — SDK reads `~/.jecp/base-key.txt` (chmod 600)
+- `kms` — bring your own KMS adapter via SDK directly
+
+### 2. Verify readiness
+
+```bash
+jecp doctor
+# … existing 9 checks …
+# ── x402 ──
+# ✓ x402 signer configured: 0xAb11... (env)
+# ✓ x402 facilitator reachable: https://x402.org/facilitator (122ms)
+# ✓ Base RPC reachable: https://mainnet.base.org chain=base (88ms)
+# ✓ Splitter check: catalog advertises payment_methods: [..., x402]
+```
+
+### 3. Invoke with x402
+
+```bash
+export BASE_PRIVATE_KEY=0x...
+jecp invoke jobdonebot/bg-remover-pro remove \
+  --pay x402 \
+  --input '{"image_url":"https://example.com/photo.jpg"}'
+
+# … receipt block printed:
+# Payment receipt (x402):
+#   method:     x402
+#   txHash:     0xdead…
+#   network:    base
+#   amount:     $0.005 (5000 USDC micros)
+#   Basescan:   https://basescan.org/tx/0xdead…
+```
+
+`--pay auto` (default) tries x402 when both the agent and capability
+support it, and falls back to wallet otherwise. `--pay wallet` forces the
+classic balance-funded path.
+
+### 4. Provider opt-in (when scaffolding)
+
+`jecp init-provider` now asks "Accept x402 (USDC on Base) payments? (Y/n)"
+and emits `payment_methods: ["stripe", "x402"]` in the manifest by default.
+Locked design §6.2 — hybrid mode is the recommended default.
+
+> **Note**: `ethers` is an optional peer dep. Install it (`npm i -g ethers`)
+> if you use `--pay x402`; otherwise the CLI falls back to wallet mode with a
+> clear hint.
 
 ## License
 
