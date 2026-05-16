@@ -49,6 +49,12 @@ Target metric: Provider TTV from ~3 days (manual DNS retry) to ~30 min.
   immediately. The Hub's 24h rotation cap surfaces with a recovery
   hint instead of a raw 429.
 
+- `jecp doctor` now reports Provider readiness when Provider creds
+  are configured: auth check against `/v1/providers/me`, DNS-verified
+  status, Stripe-Connect-verified status, and lifetime call count.
+  Skipped silently when no Provider creds — agent-only operators see
+  no extra noise.
+
 ### Changed
 
 - `jecp init-provider`'s "Next steps" footer now references the new

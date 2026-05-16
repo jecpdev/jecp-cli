@@ -1,4 +1,4 @@
-import { resolveAuth, configFilePath, loadConfig } from '../config.js';
+import { resolveAuth, resolveProviderAuth, configFilePath, loadConfig } from '../config.js';
 import { existsSync } from 'node:fs';
 import { emit, info, success, error, warn, bold, dim } from '../output.js';
 
@@ -169,6 +169,9 @@ export async function doctorCmd() {
     checks.push({ name: 'node_version', ok: false, detail: nodeVersion });
   }
 
+  // ─── Provider readiness (v0.8.0) — skipped silently if not configured ──
+  await runProviderChecks(checks, baseUrl);
+
   // ─── x402 readiness (v0.7.0) ────────────────────────────────────────────
   info('');
   info(bold('── x402 ──'));
@@ -317,4 +320,84 @@ async function fetchWithTimeout(url: string, timeoutMs: number, init?: RequestIn
   } finally {
     clearTimeout(t);
   }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// v0.8.0 — Provider readiness checks
+//
+// Skipped silently when no Provider creds are configured — most operators
+// are agent-only and the empty case shouldn't generate noise. When creds
+// are present, fetch /v1/providers/me and surface DNS + Stripe + endpoint
+// state with one actionable line per failing condition.
+// ──────────────────────────────────────────────────────────────────────
+
+interface ProviderMe {
+  provider_id: string;
+  namespace: string;
+  display_name: string;
+  status: string;
+  dns_verified: boolean;
+  stripe_verified: boolean;
+  endpoint_url?: string;
+  total_calls: number;
+}
+
+export async function runProviderChecks(checks: Check[], baseUrl: string): Promise<void> {
+  const { providerApiKey } = resolveProviderAuth();
+  if (!providerApiKey) {
+    // No creds — skip silently. Adding a warn() here would noise up the
+    // diagnostic for the typical agent-only operator.
+    return;
+  }
+
+  info('');
+  info(bold('── Provider ──'));
+
+  let me: ProviderMe | undefined;
+  try {
+    const r = await fetchWithTimeout(`${baseUrl}/v1/providers/me`, 5_000, {
+      headers: { Authorization: `Bearer ${providerApiKey}` },
+    });
+    if (r.status === 401) {
+      error(`Provider api_key rejected (401). Re-run \`jecp provider register\` or \`jecp provider rotate-key\`.`);
+      checks.push({ name: 'provider.auth', ok: false, detail: '401 INVALID_PROVIDER_KEY' });
+      return;
+    }
+    if (!r.ok) {
+      error(`Provider /me returned ${r.status}.`);
+      checks.push({ name: 'provider.auth', ok: false, detail: `status=${r.status}` });
+      return;
+    }
+    me = (await r.json()) as ProviderMe;
+  } catch (e) {
+    error(`Provider /me unreachable: ${(e as Error).message}`);
+    checks.push({ name: 'provider.auth', ok: false, detail: (e as Error).message });
+    return;
+  }
+
+  success(`Provider authenticated: ${me.namespace} ${dim('(' + me.display_name + ')')}`);
+  checks.push({ name: 'provider.auth', ok: true, detail: me.namespace });
+
+  if (me.dns_verified) {
+    success(`DNS verified: ${me.endpoint_url ?? '(endpoint unset)'}`);
+    checks.push({ name: 'provider.dns_verified', ok: true });
+  } else {
+    warn(`DNS NOT verified — add the TXT record and run \`jecp provider verify-dns\`.`);
+    checks.push({ name: 'provider.dns_verified', ok: false });
+  }
+
+  if (me.stripe_verified) {
+    success('Stripe Connect verified');
+    checks.push({ name: 'provider.stripe_verified', ok: true });
+  } else {
+    warn('Stripe NOT connected — run `jecp provider connect-stripe` and complete onboarding.');
+    checks.push({ name: 'provider.stripe_verified', ok: false });
+  }
+
+  if (me.status === 'active' && me.total_calls > 0) {
+    success(`Lifetime calls: ${me.total_calls}`);
+  } else if (me.status !== 'active') {
+    warn(`Provider status: ${me.status} (capabilities won't appear in catalog until 'active').`);
+  }
+  checks.push({ name: 'provider.status', ok: me.status === 'active', detail: me.status });
 }
