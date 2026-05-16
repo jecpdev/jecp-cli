@@ -3,6 +3,55 @@
 All notable changes to `@jecpdev/cli` are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.8.2] - 2026-05-16
+
+### Added
+
+- `jecp provider validate [file]` — client-side manifest validation
+  against the canonical schema (`jecp.dev/schemas/v1/manifest.schema.json`,
+  shipped in jecp-spec `58f14de`). Catches structural errors before the
+  Hub round-trip and surfaces them in the exact same shape as the Hub's
+  `INPUT_SCHEMA_VIOLATION` response (`{ instance_path, schema_path, reason }`)
+  so the error a developer sees locally matches what the Hub would have
+  returned.
+
+  Exit codes: `0` valid, `1` invalid (errors on stderr), `2` read /
+  parse failure. `--json` emits a machine-readable result for CI.
+
+  Implementation: hand-rolled JSON Schema 2020-12 validator (160 LOC)
+  targeted at the subset our manifest schema actually uses. Avoids
+  pulling `ajv` and its ~250 KB bundle cost. Supports `required`,
+  `pattern`, `enum`, `type`, `minLength`/`maxLength`,
+  `minimum`/`maximum`, `minItems`/`maxItems`, `items`, `properties`,
+  `additionalProperties: false`, `$ref` to `#/$defs/*`, and the
+  `allOf.not.required` pattern used for the composes/streaming xor.
+
+### Changed
+
+- `yaml` package added as a runtime dep (^2.9.0) — needed for the
+  validator to parse YAML manifests. ~50 KB unpacked. Required so
+  `validate` accepts both YAML and JSON identically to the Hub
+  (the Hub's content-type autodetect parses both).
+
+- `package-lock.json` is now committed. Was gitignored as a legacy
+  choice; the new Trusted Publishing workflow uses `npm ci` for
+  reproducible installs, which requires the lockfile.
+
+### Tests
+
+59 → 78 (+19 validator tests). Coverage:
+
+- Happy path: minimal valid manifest, manifest with all optional
+  fields filled.
+- Required fields: missing namespace, empty actions, missing pricing.
+- Pattern + enum: uppercase namespace, http endpoint, non-semver
+  version, unknown pricing model, unsupported trust_tier.
+- Type mismatches: pricing.base as number, tags as string.
+- Composes/streaming xor: both set rejected, either alone accepted.
+- `additionalProperties: false`: unknown top-level field, unknown
+  pricing property — these catch typos at validate time.
+- Error shape parity with Hub `INPUT_SCHEMA_VIOLATION` format.
+
 ## [0.8.1] - 2026-05-16
 
 QA P0 fixes from the agent-council review of v0.8.0. Both close

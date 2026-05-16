@@ -11,7 +11,7 @@ const program = new Command();
 program
   .name('jecp')
   .description('Command-line interface for JECP — Joint Execution & Commerce Protocol')
-  .version('0.8.1')
+  .version('0.8.2')
   .option('--json', 'Machine-readable JSON output')
   .option('--base-url <url>', 'Override Hub URL (default https://jecp.dev)')
   .hook('preAction', (cmd) => {
@@ -215,6 +215,14 @@ provider
   .action(async (opts) => {
     const { providerRotateKeyCmd } = await import('./commands/provider.js');
     await providerRotateKeyCmd(opts);
+  });
+
+provider
+  .command('validate [file]')
+  .description('Validate a manifest YAML/JSON against the canonical schema (default file: jecp.yaml). Exit 1 on invalid, 0 on valid, 2 on read error.')
+  .action(async (file: string | undefined, opts) => {
+    const { providerValidateCmd } = await import('./commands/validate.js');
+    await providerValidateCmd(file, opts);
   });
 
 provider

@@ -78,6 +78,7 @@ omit `--example`. The bare YAML stub is available with `--example`.
 | `jecp init-provider` | Interactive jecp.yaml scaffold (now with x402 prompts) |
 | `jecp provider register` | **v0.8.0** — Register as Provider; saves creds, prints DNS TXT |
 | `jecp provider verify-dns` | **v0.8.0** — Auto-poll until DNS TXT propagates (`--once` for CI) |
+| `jecp provider validate [file]` | **v0.8.2** — Validate jecp.yaml locally against the manifest schema (exits 1 on invalid) |
 | `jecp provider publish [file]` | **v0.8.0** — Publish jecp.yaml to `/v1/manifests` |
 | `jecp provider me` | **v0.8.0** — Show Provider DNS/Stripe/endpoint status |
 | `jecp provider rotate-key` | **v0.8.0** — Rotate Provider api_key (7-day grace) |
