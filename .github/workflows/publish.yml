@@ -70,7 +70,11 @@ jobs:
           # found" warning that distracts from real failures.
 
       - name: Install dependencies
-        run: npm ci
+        # `npm install` rather than `npm ci` because package-lock.json is
+        # currently gitignored (legacy choice, predates Trusted Publishing).
+        # Switching to npm ci is a follow-up: commit the lockfile, drop it
+        # from .gitignore, then change this line.
+        run: npm install --no-audit --no-fund
 
       - name: Lint (tsc --noEmit)
         run: npm run lint
