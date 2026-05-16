@@ -207,6 +207,17 @@ provider
   });
 
 provider
+  .command('rotate-key')
+  .description("Rotate this Provider's API key. Previous key remains valid for 7 days unless --revoke-old.")
+  .option('--grace-seconds <int>', 'Override grace window in seconds (60..604800)')
+  .option('--revoke-old', 'Revoke the old key immediately instead of using a grace period')
+  .option('--yes', 'Skip the interactive confirmation')
+  .action(async (opts) => {
+    const { providerRotateKeyCmd } = await import('./commands/provider.js');
+    await providerRotateKeyCmd(opts);
+  });
+
+provider
   .command('publish [file]')
   .description('Publish a manifest YAML to /v1/manifests (default file: jecp.yaml)')
   .action(async (file: string | undefined) => {

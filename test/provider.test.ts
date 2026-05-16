@@ -17,6 +17,7 @@ import {
   providerVerifyDnsCmd,
   providerMeCmd,
   providerPublishCmd,
+  providerRotateKeyCmd,
   parseTimeoutMs,
 } from '../src/commands/provider.js';
 
@@ -300,6 +301,99 @@ describe('providerPublishCmd', () => {
     resetCfg();
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
     await providerPublishCmd({ file: yamlPath }).catch(() => undefined);
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    exitSpy.mockRestore();
+  });
+});
+
+describe('providerRotateKeyCmd', () => {
+  beforeEach(() => {
+    saveConfig({
+      provider_id: 'prov_abc',
+      provider_namespace: 'tester',
+      provider_api_key: 'jdb_pk_old_key_value',
+      provider_hmac_secret: 'YmFzZTY0X2htYWNfc2VjcmV0',
+    });
+  });
+
+  it('persists the new api_key to config and leaves hmac_secret untouched', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockJsonResponse({
+        jecp: '1.0',
+        provider_id: 'prov_abc',
+        namespace: 'tester',
+        api_key: 'jdb_pk_new_key_value',
+        api_key_prefix: 'jdb_pk_new_',
+        previous_key_valid_until: '2026-05-23T05:00:00Z',
+        grace_seconds: 604800,
+        revoke_old: false,
+        rotations_in_last_24h: 1,
+        warning: 'This api_key is shown only once.',
+      }),
+    );
+
+    await providerRotateKeyCmd({ yes: true });
+
+    const cfg = readCfg();
+    expect(cfg.provider_api_key).toBe('jdb_pk_new_key_value');
+    // HMAC secret is on a separate lifecycle — never touched by rotate-key
+    expect(cfg.provider_hmac_secret).toBe('YmFzZTY0X2htYWNfc2VjcmV0');
+  });
+
+  it('forwards --revoke-old + --grace-seconds in the request body', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockJsonResponse({
+        jecp: '1.0',
+        provider_id: 'prov_abc',
+        namespace: 'tester',
+        api_key: 'jdb_pk_new',
+        api_key_prefix: 'jdb_pk_new_',
+        previous_key_valid_until: null,
+        grace_seconds: 0,
+        revoke_old: true,
+        rotations_in_last_24h: 2,
+        warning: 'previous key revoked',
+      }),
+    );
+
+    await providerRotateKeyCmd({ yes: true, revokeOld: true, graceSeconds: '300' });
+
+    const body = JSON.parse((fetchSpy.mock.calls[0]![1] as RequestInit).body as string);
+    expect(body.revoke_old).toBe(true);
+    expect(body.grace_seconds).toBe(300);
+  });
+
+  it('surfaces ROTATION_24H_CAP with a recovery hint instead of a raw 429', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockJsonResponse(
+        {
+          error: {
+            code: 'ROTATION_24H_CAP',
+            message: 'Rotation limit exceeded (5 rotations in the last 24 h).',
+          },
+        },
+        429,
+      ),
+    );
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+    await providerRotateKeyCmd({ yes: true }).catch(() => undefined);
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    // old key MUST stay in config when rotation is rejected
+    expect(readCfg().provider_api_key).toBe('jdb_pk_old_key_value');
+    exitSpy.mockRestore();
+  });
+
+  it('rejects --grace-seconds outside [60, 604800]', async () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+    await providerRotateKeyCmd({ yes: true, graceSeconds: '30' }).catch(() => undefined);
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    exitSpy.mockRestore();
+  });
+
+  it('aborts when no provider creds are saved', async () => {
+    resetCfg();
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+    await providerRotateKeyCmd({ yes: true }).catch(() => undefined);
     expect(exitSpy).toHaveBeenCalledWith(1);
     exitSpy.mockRestore();
   });

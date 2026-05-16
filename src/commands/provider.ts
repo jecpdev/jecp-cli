@@ -527,6 +527,124 @@ export async function providerPublishCmd(opts: PublishOpts): Promise<void> {
   });
 }
 
+// ── jecp provider rotate-key ────────────────────────────────────────────
+
+interface RotateKeyOpts {
+  graceSeconds?: string;
+  revokeOld?: boolean;
+  yes?: boolean;
+}
+
+interface RotateKeyResponse {
+  jecp: '1.0';
+  provider_id: string;
+  namespace: string;
+  api_key: string;
+  api_key_prefix: string;
+  previous_key_valid_until: string | null;
+  grace_seconds: number;
+  revoke_old: boolean;
+  rotations_in_last_24h: number;
+  warning: string;
+}
+
+/**
+ * Rotate this Provider's API key. The HMAC secret is NOT rotated — it lives
+ * on a separate lifecycle (HMAC is the Provider-side signing secret for
+ * inbound Hub forwards; the api_key is the Provider's outbound auth for
+ * /v1/providers/* and /v1/manifests). To rotate HMAC you'd re-register.
+ *
+ * Hub-side guarantees (see /v1/providers/me/rotate-key handler):
+ *
+ * - Atomic SQL TX: count-of-recent-rotations + UPDATE + audit row land in
+ *   one transaction. Either everything commits or nothing does.
+ * - 24h rotation cap. Hub returns 429 ROTATION_24H_CAP when the Provider
+ *   has rotated too many times in the last day — defends against an
+ *   attacker who phished one key and tries to "permanently rotate it out
+ *   of reach" by spamming new rotations.
+ * - Grace period default is 7 days (604800 s). --revoke-old forces 0 s.
+ */
+export async function providerRotateKeyCmd(opts: RotateKeyOpts): Promise<void> {
+  const { providerApiKey, namespace } = resolveProviderAuth();
+  if (!providerApiKey) {
+    fail('No Provider credentials. Run `jecp provider register` first.');
+    return;
+  }
+
+  if (!opts.yes) {
+    const ans = await prompts({
+      type: 'confirm',
+      name: 'go',
+      message: opts.revokeOld
+        ? "Rotate this Provider's API key AND revoke the old one immediately? Existing invocations using the old key will fail."
+        : "Rotate this Provider's API key? The previous key remains valid for 7 days unless overridden.",
+      initial: false,
+    });
+    if (!ans.go) {
+      info('Aborted.');
+      return;
+    }
+  }
+
+  const grace =
+    opts.graceSeconds !== undefined ? parseInt(opts.graceSeconds, 10) : undefined;
+  if (grace !== undefined && (Number.isNaN(grace) || grace < 60 || grace > 604800)) {
+    fail('--grace-seconds must be an integer between 60 and 604800 (7 days).');
+    return;
+  }
+
+  const body: Record<string, unknown> = {};
+  if (grace !== undefined) body.grace_seconds = grace;
+  if (opts.revokeOld) body.revoke_old = true;
+
+  let r: RotateKeyResponse;
+  try {
+    r = await fetchJson<RotateKeyResponse>({
+      method: 'POST',
+      path: '/v1/providers/me/rotate-key',
+      body,
+      authed: true,
+      providerApiKey,
+    });
+  } catch (e) {
+    if (isHttpError(e)) {
+      if (e.code === 'ROTATION_24H_CAP') {
+        fail(
+          `${e.message} If this is unexpected, audit recent activity in the Hub's provider_audit_log.`,
+        );
+        return;
+      }
+      fail(`${e.code}: ${e.message}`);
+      return;
+    }
+    throw e;
+  }
+
+  // Persist the new key. HMAC secret is untouched — leave it as-is in config.
+  const cfg = loadConfig();
+  if (cfg.provider_id && cfg.provider_id === r.provider_id) {
+    cfg.provider_api_key = r.api_key;
+    saveConfig(cfg);
+  }
+
+  emit(r, () => {
+    success(`Provider API key rotated for namespace '${r.namespace}'.`);
+    info('');
+    info(`${bold('New api_key:')}              ${r.api_key}`);
+    info(`${bold('Previous valid until:')}     ${r.previous_key_valid_until ?? '(revoked)'}`);
+    info(`${bold('Grace seconds:')}            ${r.grace_seconds}`);
+    info(`${bold('Rotations last 24h:')}       ${r.rotations_in_last_24h}`);
+    info('');
+    if (cfg.provider_id === r.provider_id) {
+      info(`${dim(`Saved to ${configFilePath()} (mode 0600).`)}`);
+    } else {
+      warn('Local config did not match this Provider — new key NOT auto-saved.');
+    }
+    info('');
+    warn(r.warning);
+  });
+}
+
 // ── jecp provider connect-stripe ────────────────────────────────────────
 
 interface ConnectStripeResponse {

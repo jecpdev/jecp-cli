@@ -41,6 +41,13 @@ Target metric: Provider TTV from ~3 days (manual DNS retry) to ~30 min.
   An operator can `npm install && node handler.mjs` and have a live,
   spec-compliant endpoint in under a minute. Bare `--example` keeps
   the legacy single-file YAML stub behavior.
+- `jecp provider rotate-key [--grace-seconds <s>] [--revoke-old] [--yes]`
+  — rotate the Provider's API key. The HMAC secret is NOT rotated
+  (separate lifecycle: HMAC signs inbound Hub forwards, api_key is
+  outbound auth for `/v1/providers/*` and `/v1/manifests`). Default
+  grace is 7 days; `--revoke-old` forces the old key invalid
+  immediately. The Hub's 24h rotation cap surfaces with a recovery
+  hint instead of a raw 429.
 
 ### Changed
 

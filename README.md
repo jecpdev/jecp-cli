@@ -80,6 +80,7 @@ omit `--example`. The bare YAML stub is available with `--example`.
 | `jecp provider verify-dns` | **v0.8.0** — Auto-poll until DNS TXT propagates (`--once` for CI) |
 | `jecp provider publish [file]` | **v0.8.0** — Publish jecp.yaml to `/v1/manifests` |
 | `jecp provider me` | **v0.8.0** — Show Provider DNS/Stripe/endpoint status |
+| `jecp provider rotate-key` | **v0.8.0** — Rotate Provider api_key (7-day grace) |
 | `jecp provider connect-stripe` | **v0.8.0** — Get Stripe Connect onboarding URL |
 | `jecp rotate-key` | Rotate this agent's API key (7-day grace) |
 | `jecp refund …` / `webhook …` | Refund + webhook subscription management |
