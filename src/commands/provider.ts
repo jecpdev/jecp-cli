@@ -338,6 +338,12 @@ export async function providerVerifyDnsCmd(opts: VerifyDnsOpts): Promise<void> {
  * line per attempt. On success, suggests the next command. On timeout,
  * exits with code 2 so CI scripts can react.
  *
+ * Halting conditions (shared with `@jecpdev/sdk`'s `verifyDnsPoll` — QA P1-5):
+ * - 401 / 403 during any attempt → process exits (don't poll forever on bad key)
+ * - 5xx during any attempt       → process exits (Hub broken, caller can't fix)
+ * The SDK throws `AuthError` / `JecpError` for the same conditions; the two
+ * surfaces stop polling for the same reasons but signal differently.
+ *
  * Why 10s: most DNS providers propagate within 30s-2min. A shorter interval
  * burns RPS quota at the Hub for no operator benefit; a longer one feels
  * sluggish on Cloudflare (typically < 30s).
@@ -370,6 +376,21 @@ async function pollVerifyDns(providerApiKey: string, deadlineMs: number): Promis
   );
 }
 
+/**
+ * Single attempt against POST /v1/providers/verify-dns.
+ *
+ * The poll loop halts on auth failure (401 / 403) or 5xx — both stop the
+ * CLI with a fatal exit and stop the SDK's `verifyDnsPoll` with a throw.
+ * Both surfaces share the same set of halting conditions (QA P1-5):
+ *
+ * - 2xx                            → return parsed envelope
+ * - 4xx (non-401/403, e.g. 404)    → return envelope; caller keeps polling
+ *                                    (the TXT record is still propagating)
+ * - 401 / 403                      → fatal: CLI exits, SDK throws AuthError
+ *                                    (don't poll forever against a bad key)
+ * - 5xx                            → fatal: CLI exits, SDK throws JecpError
+ *                                    (Hub is broken — caller can't recover)
+ */
 async function singleVerifyAttempt(providerApiKey: string): Promise<VerifyDnsResponse> {
   try {
     return await fetchJson<VerifyDnsResponse>({
@@ -381,12 +402,20 @@ async function singleVerifyAttempt(providerApiKey: string): Promise<VerifyDnsRes
     });
   } catch (e) {
     if (isHttpError(e)) {
-      // The Hub returns 4xx with a structured body when the TXT is missing
-      // or wrong — surface it as a non-fatal "not yet" rather than crashing
-      // the poll loop. 5xx still propagates as a fatal error.
+      // 401 / 403: a revoked or wrong api_key would otherwise loop forever.
+      // Halt with a fatal exit so operators see the auth problem immediately
+      // (matches SDK.singleVerifyAttempt which throws AuthError for the same
+      // condition — QA P1-5).
+      if (e.status === 401 || e.status === 403) {
+        fail(`${e.code}: ${e.message} — check JECP_PROVIDER_KEY or re-register.`);
+      }
+      // 4xx (non-auth): the Hub returns a structured body when the TXT is
+      // missing / wrong / still propagating — surface as a non-verified
+      // attempt so the poll loop continues.
       if (e.status >= 400 && e.status < 500) {
         return { verified: false, status: e.code, message: e.message };
       }
+      // 5xx: Hub-side failure the caller cannot fix. Halt the loop.
       fail(`${e.code}: ${e.message}`);
     }
     throw e;

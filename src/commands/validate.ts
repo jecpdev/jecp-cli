@@ -19,7 +19,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { validateManifest } from '../lib/manifest-validate.js';
+import { validateManifest } from '@jecpdev/sdk';
 import { emit, info, success, error, warn, bold, dim, fail } from '../output.js';
 
 interface ValidateOpts {

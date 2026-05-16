@@ -682,7 +682,7 @@ Once DNS and Stripe are both verified, the capability auto-promotes to
      with your business logic. \`req.input\` is the validated payload.
 3. Bump \`version:\` in \`jecp.yaml\` and re-run \`jecp provider publish\`.
 
-## ⚠ Streaming (Server-Sent Events) is NOT supported by this scaffold
+## Heads up: streaming (Server-Sent Events) is NOT supported by this scaffold
 
 The handler in \`handler.mjs\` uses \`JecpProvider.createHandler\`, which
 buffers and returns the response as a single JSON envelope. If you set

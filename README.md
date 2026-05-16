@@ -34,7 +34,7 @@ $ jecp invoke jobdonebot/content-factory translate \
   Balance:     $0.995 USDC
 ```
 
-## Quickstart — Provider in 30 minutes (v0.8.0)
+## Quickstart — Provider in 30 minutes (v0.8.1+)
 
 ```bash
 $ jecp init-provider --example hello-world      # scaffold runnable starter

@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { validateManifest } from '../src/lib/manifest-validate.js';
+import { validateManifest } from '@jecpdev/sdk';
 
 const validMinimal = {
   namespace: 'example',
