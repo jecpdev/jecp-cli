@@ -1,0 +1,104 @@
+# npm publish via Trusted Publishing (OIDC).
+#
+# How this works:
+#   1. A tag matching v*.*.* is pushed (e.g. v0.8.1).
+#   2. This workflow runs, builds the CLI, and calls `npm publish --provenance`.
+#   3. npm's registry verifies an OIDC token from GitHub Actions identifying
+#      this exact repo + workflow + branch context.
+#   4. Because we configured @jecpdev/cli as a Trusted Publisher on
+#      npmjs.com pointing at `jecpdev/jecp-cli` + this `publish.yml`,
+#      the registry accepts the publish with no long-lived token,
+#      no OTP, no bypass-2FA configuration.
+#
+# Setup required ONCE (before the first tag push):
+#
+#   On https://www.npmjs.com/package/@jecpdev/cli/access (Trusted Publishers
+#   section), click "Add Trusted Publisher" and fill:
+#     Publisher:        GitHub Actions
+#     Repository:       jecpdev/jecp-cli
+#     Workflow path:    .github/workflows/publish.yml
+#     Environment name: (leave empty)
+#
+#   After that's saved, tag and push:
+#     git tag v0.8.1
+#     git push origin v0.8.1
+#
+# Release cadence: the workflow ONLY fires on tag push, never on branch push.
+# That keeps merges and direct commits from accidentally publishing.
+
+name: Publish to npm (Trusted Publishing)
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    # workflow_dispatch lets an admin re-run a publish from the Actions UI
+    # if the tag-triggered run failed transiently. The published version is
+    # still controlled by package.json, so a re-run is idempotent if the
+    # version is unchanged (npm will reject duplicate-version publishes).
+
+permissions:
+  # id-token: write is required by npm Trusted Publishing — it lets this
+  # job mint a GitHub-issued OIDC token that npm's registry verifies.
+  # contents: read is the default minimum for actions/checkout.
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # We don't need history; the tag is enough.
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          # @jecpdev/cli engines.node = ">=20"; 22 is the current LTS.
+          node-version: '22'
+          # The Trusted Publishing endpoint is the public npmjs.org.
+          registry-url: 'https://registry.npmjs.org/'
+          # cache: 'npm' is intentionally omitted — this is a leaf project
+          # without a committed package-lock at the root level, and the
+          # install is small. Adding cache here triggers a "lockfile not
+          # found" warning that distracts from real failures.
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (tsc --noEmit)
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify package.json version matches tag
+        # If the tag is v0.8.1, package.json must say "0.8.1". This catches
+        # the common slip where someone tags before bumping the version.
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $PKG_VERSION"
+            exit 1
+          fi
+          echo "Version match: package=$PKG_VERSION tag=$TAG_VERSION"
+
+      - name: Publish to npm
+        # --provenance signs the publish with the OIDC token, attesting that
+        # this build came from this repo+workflow+tag. npm's registry uses
+        # the attestation to decide whether to accept the publish under the
+        # Trusted Publisher rule.
+        # --access public is required for scoped packages (@jecpdev/*) by
+        # default; the npm registry rejects scoped publishes that don't
+        # set this explicitly.
+        run: npm publish --provenance --access public
