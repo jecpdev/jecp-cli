@@ -45,6 +45,25 @@ describe('initProviderCmd --example hello-world', () => {
     expect(pkg.scripts.start).toBe('node handler.mjs');
   });
 
+  it('handler.mjs warns prominently that SSE / streaming is NOT supported', async () => {
+    const dir = freshDir();
+    await initProviderCmd({ output: join(dir, 'jecp.yaml'), example: 'hello-world', yes: true });
+    const handler = readFileSync(join(dir, 'handler.mjs'), 'utf-8');
+    // The header comment must include the streaming-not-supported callout
+    // so an operator reading the file before publishing sees the limitation.
+    expect(handler).toMatch(/STREAMING NOT SUPPORTED/);
+    expect(handler).toMatch(/jecp\.dev\/guides\/streaming/);
+  });
+
+  it('README has a Streaming section pointing at the streaming guide', async () => {
+    const dir = freshDir();
+    await initProviderCmd({ output: join(dir, 'jecp.yaml'), example: 'hello-world', yes: true });
+    const readme = readFileSync(join(dir, 'README.md'), 'utf-8');
+    expect(readme).toMatch(/Streaming.*NOT supported/i);
+    expect(readme).toMatch(/text\/event-stream/);
+    expect(readme).toMatch(/jecp\.dev\/guides\/streaming/);
+  });
+
   it('jecp.yaml declares the echo action with correct shape', async () => {
     const dir = freshDir();
     await initProviderCmd({ output: join(dir, 'jecp.yaml'), example: 'hello-world', yes: true });

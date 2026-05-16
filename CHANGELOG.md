@@ -3,6 +3,53 @@
 All notable changes to `@jecpdev/cli` are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.8.1] - 2026-05-16
+
+QA P0 fixes from the agent-council review of v0.8.0. Both close
+real lockout / silent-breakage risks that existed before npm publish.
+
+### Fixed
+
+- **Atomic config writes** — `saveConfig()` now writes to a sibling
+  `config.json.tmp.<pid>` file, `fsync`s it, then `rename()`s over
+  the real path. POSIX `rename(2)` is atomic, so a crash between the
+  write and the durable commit can no longer leave the operator with
+  a half-written `~/.jecp/config.json`. The original file content
+  survives even if the new write fails for any reason.
+
+- **Anti-lockout fallback on rotate-key** — both `jecp rotate-key`
+  (agent) and `jecp provider rotate-key` now wrap `saveConfig()` in
+  a try/catch. If the Hub rotation succeeds but the local persist
+  fails (disk full, permission change, ENOSPC, etc.), the new
+  `api_key` is emitted to stdout with a multi-line URGENT warning
+  and a paste-into-config recipe — instead of the prior behavior
+  where the operator would be silently locked out (Hub revoked old
+  key, local file never got the new one).
+
+- **hello-world scaffold streaming trap** — the generated
+  `handler.mjs` and `README.md` now carry prominent warnings that
+  this scaffold uses `JecpProvider.createHandler` (non-streaming
+  only), and that setting `streaming: true` on a `jecp.yaml` action
+  while keeping this handler produces a silently-broken endpoint.
+  README explains the SSE wire format expectations and links to the
+  streaming guide for Providers that need it.
+
+### Tests
+
+50 → 59 (+9). New coverage:
+
+- `test/config-atomic.test.ts` — 6 tests verifying crash-atomic
+  rename, original-file survival on rename failure, no `.tmp.<pid>`
+  leaks, mode-0600 final permissions, back-to-back rapid rotations
+  without PID collisions, and legacy-file mode normalization.
+- `test/provider.test.ts` — 1 new "surfaces the new key on stdout
+  if config save fails" test using a real read-only `~/.jecp/`
+  filesystem state (not module-level mocking — vitest can't redefine
+  `node:fs` exports).
+- `test/init-provider-hello-world.test.ts` — 2 new tests asserting
+  the streaming-not-supported warnings appear in both `handler.mjs`
+  header and the scaffold README.
+
 ## [0.8.0] - 2026-05-16
 
 Closes the Provider onboarding loop end-to-end in the CLI. Before this

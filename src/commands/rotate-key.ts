@@ -33,12 +33,21 @@ export async function rotateKeyCmd(opts: RotateOpts): Promise<void> {
   try {
     const r = await jecp.rotateApiKey(grace !== undefined ? { graceSeconds: grace } : {});
 
-    // Persist the new key in ~/.jecp/config.json so subsequent jecp commands
-    // pick it up automatically.
+    // CRITICAL: the Hub has issued a new key and (after grace_seconds, or
+    // immediately if revoke_old) the old one stops working. If we can't
+    // persist the new key locally we MUST still surface it to the
+    // operator — otherwise they're locked out with no recovery.
     const cfg = loadConfig();
+    let savedOk = false;
+    let saveError: Error | undefined;
     if (cfg.agent_id && cfg.agent_id === r.agent_id) {
       cfg.api_key = r.api_key;
-      saveConfig(cfg);
+      try {
+        saveConfig(cfg);
+        savedOk = true;
+      } catch (e) {
+        saveError = e instanceof Error ? e : new Error(String(e));
+      }
     }
 
     emit(
@@ -48,6 +57,8 @@ export async function rotateKeyCmd(opts: RotateOpts): Promise<void> {
         previous_key_valid_until: r.previous_key_valid_until,
         grace_seconds: r.grace_seconds,
         config_file: configFilePath(),
+        saved_to_config: savedOk,
+        ...(saveError && { save_error: saveError.message }),
       },
       () => {
         success('Agent API key rotated.');
@@ -56,8 +67,13 @@ export async function rotateKeyCmd(opts: RotateOpts): Promise<void> {
         info(`${bold('Previous key valid until:')} ${r.previous_key_valid_until}`);
         info(`${bold('Grace seconds:')}            ${r.grace_seconds}`);
         info('');
-        if (cfg.agent_id === r.agent_id) {
+        if (savedOk) {
           info(dim(`Saved to ${configFilePath()} (chmod 600).`));
+        } else if (saveError) {
+          warn('URGENT: New api_key was issued by the Hub but NOT saved locally.');
+          warn(`Save failure: ${saveError.message}`);
+          warn('PASTE THE api_key ABOVE INTO YOUR SECRET STORE NOW — it will not be shown again.');
+          warn(`After saving, manually update ${configFilePath()} or re-run \`jecp login --agent-id ${r.agent_id} --api-key <paste>\`.`);
         } else {
           warn('Local config did not match this agent — new key NOT auto-saved.');
         }

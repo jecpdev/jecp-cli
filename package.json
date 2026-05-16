@@ -1,6 +1,6 @@
 {
   "name": "@jecpdev/cli",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Command-line interface for JECP — register agents, invoke capabilities, manage Providers from your terminal.",
   "type": "module",
   "bin": {

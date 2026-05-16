@@ -621,10 +621,21 @@ export async function providerRotateKeyCmd(opts: RotateKeyOpts): Promise<void> {
   }
 
   // Persist the new key. HMAC secret is untouched — leave it as-is in config.
+  // CRITICAL: the Hub has already rotated. If we can't persist locally, the
+  // operator can still recover IF AND ONLY IF they see the new key now —
+  // so on any failure, emit the key to stdout with a loud warning rather
+  // than swallow the error and lock them out.
   const cfg = loadConfig();
+  let savedOk = false;
+  let saveError: Error | undefined;
   if (cfg.provider_id && cfg.provider_id === r.provider_id) {
     cfg.provider_api_key = r.api_key;
-    saveConfig(cfg);
+    try {
+      saveConfig(cfg);
+      savedOk = true;
+    } catch (e) {
+      saveError = e instanceof Error ? e : new Error(String(e));
+    }
   }
 
   emit(r, () => {
@@ -635,8 +646,20 @@ export async function providerRotateKeyCmd(opts: RotateKeyOpts): Promise<void> {
     info(`${bold('Grace seconds:')}            ${r.grace_seconds}`);
     info(`${bold('Rotations last 24h:')}       ${r.rotations_in_last_24h}`);
     info('');
-    if (cfg.provider_id === r.provider_id) {
+    if (savedOk) {
       info(`${dim(`Saved to ${configFilePath()} (mode 0600).`)}`);
+    } else if (saveError) {
+      // Loud, multi-line, deliberately scary. The Hub has already revoked
+      // the previous key in most cases (revoke_old=true) or is about to in
+      // grace_seconds. If the operator dismisses this warning the next
+      // command will fail authentication and they have no recovery path
+      // short of namespace re-register.
+      warn('URGENT: New api_key was issued by the Hub but NOT saved locally.');
+      warn(`Save failure: ${saveError.message}`);
+      warn('PASTE THE api_key ABOVE INTO YOUR SECRET STORE NOW — it will not be shown again.');
+      warn(`After saving, manually update ${configFilePath()}:`);
+      warn(`  echo '{"provider_api_key":"<paste-here>","provider_id":"${r.provider_id}","provider_namespace":"${r.namespace}"}' > ${configFilePath()}`);
+      warn(`  chmod 600 ${configFilePath()}`);
     } else {
       warn('Local config did not match this Provider — new key NOT auto-saved.');
     }

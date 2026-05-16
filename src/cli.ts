@@ -11,7 +11,7 @@ const program = new Command();
 program
   .name('jecp')
   .description('Command-line interface for JECP — Joint Execution & Commerce Protocol')
-  .version('0.8.0')
+  .version('0.8.1')
   .option('--json', 'Machine-readable JSON output')
   .option('--base-url <url>', 'Override Hub URL (default https://jecp.dev)')
   .hook('preAction', (cmd) => {

@@ -397,6 +397,61 @@ describe('providerRotateKeyCmd', () => {
     expect(exitSpy).toHaveBeenCalledWith(1);
     exitSpy.mockRestore();
   });
+
+  it('surfaces the new key on stdout if config save fails (anti-lockout)', async () => {
+    // Force a real saveConfig failure by making CONFIG_DIR read-only.
+    // The Hub has already revoked the old key, so swallowing the error
+    // would lock the operator out. The fix: emit the new key to stdout
+    // with a "PASTE NOW" warning instead of crashing silently.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockJsonResponse({
+        jecp: '1.0',
+        provider_id: 'prov_abc',
+        namespace: 'tester',
+        api_key: 'jdb_pk_brand_new_key',
+        api_key_prefix: 'jdb_pk_bran',
+        previous_key_valid_until: null,
+        grace_seconds: 0,
+        revoke_old: true,
+        rotations_in_last_24h: 1,
+        warning: 'previous key revoked',
+      }),
+    );
+
+    // Make ~/.jecp/ readonly so the temp-file + rename inside saveConfig fails.
+    const { chmodSync } = await import('node:fs');
+    const cfgDir = join(tmpHome, '.jecp');
+    chmodSync(cfgDir, 0o500);
+
+    // Capture warnings — the new key + failure detail must surface there.
+    // output.ts calls console.warn('⚠', msg) so we join all args.
+    const warnings: string[] = [];
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
+      warnings.push(args.map(String).join(' '));
+    });
+    // The new key is also routed through info() (the success header block);
+    // capture stdout too so we don't miss it in the search below.
+    const logs: string[] = [];
+    const logSpy = vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      logs.push(args.map(String).join(' '));
+    });
+
+    try {
+      await providerRotateKeyCmd({ yes: true, revokeOld: true });
+    } finally {
+      chmodSync(cfgDir, 0o700);
+      warnSpy.mockRestore();
+      logSpy.mockRestore();
+    }
+
+    // The Hub-issued key MUST be in the operator-visible output. Without
+    // this we'd be a lock-the-operator-out failure.
+    const allOutput = [...logs, ...warnings].join('\n');
+    expect(allOutput).toContain('jdb_pk_brand_new_key');
+    const warnCombined = warnings.join('\n');
+    expect(warnCombined.toUpperCase()).toContain('URGENT');
+    expect(warnCombined.toLowerCase()).toMatch(/save fail|paste/);
+  });
 });
 
 describe('providerMeCmd', () => {
