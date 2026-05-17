@@ -96,14 +96,47 @@ export function saveConfig(cfg: CliConfig): void {
   }
 }
 
+/**
+ * Module-level flag so the JECP_AGENT_KEY deprecation warning fires at most
+ * once per CLI invocation, even if multiple commands or helpers call
+ * resolveAuth() during a single run.
+ */
+let _legacyAgentKeyWarned = false;
+
 /** Resolve credentials with env-var priority over config file. */
 export function resolveAuth(): { agentId?: string; apiKey?: string; baseUrl?: string } {
   const cfg = loadConfig();
+
+  // Precedence: JECP_API_KEY (preferred, matches `X-API-Key` Hub header
+  // naming convention) > JECP_AGENT_KEY (legacy, deprecated — will be
+  // removed in v0.10) > config file `api_key`.
+  let apiKey: string | undefined = process.env.JECP_API_KEY;
+  if (!apiKey && process.env.JECP_AGENT_KEY) {
+    apiKey = process.env.JECP_AGENT_KEY;
+    if (!_legacyAgentKeyWarned) {
+      _legacyAgentKeyWarned = true;
+      process.stderr.write(
+        '[jecp] JECP_AGENT_KEY is deprecated. Use JECP_API_KEY instead. ' +
+        'JECP_AGENT_KEY will be removed in v0.10.\n',
+      );
+    }
+  }
+  if (!apiKey) apiKey = cfg.api_key;
+
   return {
     agentId: process.env.JECP_AGENT_ID ?? cfg.agent_id,
-    apiKey: process.env.JECP_AGENT_KEY ?? cfg.api_key,
+    apiKey,
     baseUrl: process.env.JECP_BASE_URL ?? cfg.base_url ?? 'https://jecp.dev',
   };
+}
+
+/**
+ * Test-only: reset the deprecation-warning latch so unit tests can assert
+ * the once-per-process behavior across multiple cases. NOT exported from
+ * the package entry point — only the test files import this directly.
+ */
+export function __resetDeprecationWarningForTests(): void {
+  _legacyAgentKeyWarned = false;
 }
 
 /**

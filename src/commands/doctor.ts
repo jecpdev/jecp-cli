@@ -84,14 +84,43 @@ export async function doctorCmd() {
   }
 
   // ─── 6. SDK version + npm latest comparison ─────────────────────────────
+  //
+  // Resolution order (degrades gracefully — never throws to the user):
+  //   1. require.resolve('@jecpdev/sdk/package.json')
+  //      → works when the CLI is installed globally / from npm; node_modules
+  //        is sitting next to dist/.
+  //   2. Read this CLI's own package.json `dependencies['@jecpdev/sdk']`.
+  //      → works in a dev workspace where the SDK hasn't been npm-installed
+  //        next to dist/ (e.g. linked from a sibling repo); we surface the
+  //        declared version so `doctor` doesn't lie about not finding it.
+  //   3. ok: false with detail "SDK not found in tree" (no throw).
   let installedSdk: string | undefined;
+  let sdkSource: 'node_modules' | 'declared' | undefined;
   try {
     const { createRequire } = await import('node:module');
     const req = createRequire(import.meta.url);
     const pkgPath = req.resolve('@jecpdev/sdk/package.json');
     const { readFileSync } = await import('node:fs');
     installedSdk = (JSON.parse(readFileSync(pkgPath, 'utf-8')) as { version: string }).version;
-  } catch { /* swallow */ }
+    sdkSource = 'node_modules';
+  } catch {
+    // Fallback: parse this CLI's own package.json dependencies block. Strip
+    // a leading ^/~/>= so we surface a real semver string.
+    try {
+      const { createRequire } = await import('node:module');
+      const req = createRequire(import.meta.url);
+      const ownPkgPath = req.resolve('../package.json');
+      const { readFileSync } = await import('node:fs');
+      const ownPkg = JSON.parse(readFileSync(ownPkgPath, 'utf-8')) as {
+        dependencies?: Record<string, string>;
+      };
+      const declared = ownPkg.dependencies?.['@jecpdev/sdk'];
+      if (declared) {
+        installedSdk = declared.replace(/^[\^~>=<\s]+/, '');
+        sdkSource = 'declared';
+      }
+    } catch { /* swallow — final state handled below */ }
+  }
 
   let latestSdk: string | undefined;
   try {
@@ -102,20 +131,24 @@ export async function doctorCmd() {
     }
   } catch { /* network may be blocked */ }
 
+  // When the SDK version came from package.json `dependencies`, annotate so
+  // operators understand `doctor` couldn't physically resolve the package
+  // (e.g. dev workspace without `npm install`).
+  const sdkSuffix = sdkSource === 'declared' ? ' (declared in package.json)' : '';
   if (installedSdk && latestSdk) {
     if (installedSdk === latestSdk) {
-      success(`SDK version: ${installedSdk} (up to date)`);
+      success(`SDK version: ${installedSdk} (up to date)${sdkSuffix}`);
       checks.push({ name: 'sdk_version', ok: true, detail: installedSdk });
     } else {
-      warn(`SDK version: ${installedSdk} installed, ${latestSdk} latest on npm`);
+      warn(`SDK version: ${installedSdk} installed, ${latestSdk} latest on npm${sdkSuffix}`);
       checks.push({ name: 'sdk_version', ok: false, detail: `${installedSdk} → ${latestSdk}` });
     }
   } else if (installedSdk) {
-    success(`SDK version: ${installedSdk}`);
+    success(`SDK version: ${installedSdk}${sdkSuffix}`);
     checks.push({ name: 'sdk_version', ok: true, detail: installedSdk });
   } else {
     warn('Could not detect @jecpdev/sdk');
-    checks.push({ name: 'sdk_version', ok: false });
+    checks.push({ name: 'sdk_version', ok: false, detail: 'SDK not found in tree' });
   }
 
   // ─── 7. CLI version vs npm latest ───────────────────────────────────────

@@ -1,0 +1,67 @@
+# Daily integration smoke against the live JECP Hub.
+#
+# NON-BLOCKING by design: regressions surface as red runs in the Actions
+# UI (and the Actions tab shows the timeline), but DO NOT block PRs or
+# main-branch progress. An admin watching Actions sees the regression
+# and triages it.
+#
+# Why non-blocking:
+#   - The integration suite spawns the built CLI against a live Hub
+#     (`https://setsuna-jobdonebot.fly.dev` by default). Fly cold starts,
+#     network blips, or staging-side maintenance can red-light a run
+#     through no fault of the CLI itself. Blocking PRs on that would
+#     create false-positive friction; surfacing it as a red Actions
+#     entry preserves the signal without the cost.
+#   - The hermetic `npm test` suite (78+ unit tests) IS the blocking
+#     gate. This cron is the canary that catches CLI/Hub contract drift
+#     between releases — exactly the class of bug that's invisible to
+#     unit tests.
+#
+# Schedule: 06:00 UTC daily = 15:00 JST. Pick a slot when the Tokyo team
+# is online and can react.
+
+name: Integration tests (daily)
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # 06:00 UTC daily = 15:00 JST
+  workflow_dispatch:
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Match the publish workflow's Node version so test results
+          # reflect what users actually run when they `npm i -g @jecpdev/cli`.
+          node-version: '22'
+          # Don't enable `cache: npm` — see the note in publish.yml about
+          # this repo intentionally relying on package-lock.json without
+          # the GH cache layer.
+
+      - name: Install (npm ci honors lockfile)
+        run: npm ci --no-audit --no-fund
+
+      - name: Build CLI (integration tests run dist/cli.js)
+        run: npm run build
+
+      - name: Run integration tests
+        # continue-on-error keeps the workflow non-blocking. The next step
+        # forces a red Actions entry when the suite regresses so an admin
+        # sees it without it gating any PR.
+        id: itest
+        continue-on-error: true
+        run: npm run test:integration
+
+      - name: Surface regression as a red run
+        # If `itest` failed, exit non-zero so the Actions UI marks this
+        # run red even though continue-on-error swallowed the original
+        # failure. No actual notification — admin watches the tab.
+        if: steps.itest.outcome == 'failure'
+        run: |
+          echo "::error::Integration tests regressed. See the previous step's output."
+          exit 1

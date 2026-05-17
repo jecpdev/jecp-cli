@@ -55,9 +55,11 @@ export function runCli(args: string[], opts: RunCliOptions = {}): Promise<RunCli
     ...process.env,
     HOME: sandboxHome,
     // Strip credentials env vars so doctor / status don't accidentally
-    // pick up the developer's keys. (Note: CLI reads JECP_AGENT_KEY,
-    // not JECP_API_KEY — see src/config.ts.)
+    // pick up the developer's keys. CLI accepts both JECP_API_KEY (preferred)
+    // and JECP_AGENT_KEY (legacy, deprecated) — strip BOTH so the legacy
+    // path never silently leaks through.
     JECP_AGENT_ID: undefined as unknown as string,
+    JECP_API_KEY: undefined as unknown as string,
     JECP_AGENT_KEY: undefined as unknown as string,
     JECP_PROVIDER_API_KEY: undefined as unknown as string,
     JECP_BASE_URL: undefined as unknown as string,

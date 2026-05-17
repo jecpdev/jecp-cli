@@ -13,6 +13,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `JECP_TEST_BASE_URL`). Covers `--help` surface, `doctor --json`, and
   `catalog --json`. Excluded from `npm test`. Requires `npm run build`
   first. See [`test/integration/README.md`](./test/integration/README.md).
+- `JECP_API_KEY` environment variable — preferred name for the agent's
+  API key, matching the Hub's `X-API-Key` header convention. Both env
+  vars are honored: `JECP_API_KEY` wins when both are set.
+- `.github/workflows/integration-cron.yml` — daily cron (06:00 UTC /
+  15:00 JST) that runs `npm run test:integration` against the live Hub.
+  **Non-blocking**: regressions surface as red Actions runs but do not
+  gate PRs. The hermetic `npm test` suite remains the blocking gate.
+
+### Changed
+
+- `jecp doctor` SDK version detection now degrades gracefully. When
+  `require.resolve('@jecpdev/sdk/package.json')` fails (dev workspace
+  without `npm install`, or symlinked layouts), it falls back to the
+  declared version in this CLI's own `package.json` `dependencies`. The
+  output annotates the source (`(declared in package.json)`) so it's
+  clear the package wasn't physically resolved. When neither lookup
+  works, `sdk_version.detail` is `"SDK not found in tree"` instead of
+  silent omission.
+
+### Deprecated
+
+- `JECP_AGENT_KEY` environment variable — superseded by `JECP_API_KEY`.
+  The legacy name is still honored for one more release and emits a
+  one-shot deprecation warning on stderr when read. **Will be removed in
+  v0.10**. Update CI scripts to use `JECP_API_KEY`.
 
 ## [0.8.2] - 2026-05-16
 

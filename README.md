@@ -95,8 +95,21 @@ Run `jecp <command> --help` for full options.
 
 ## Auth precedence
 
-1. `JECP_AGENT_ID` + `JECP_AGENT_KEY` env vars (CI mode)
+1. `JECP_AGENT_ID` + `JECP_API_KEY` env vars (CI mode)
 2. `~/.jecp/config.json` (saved by `register` or `login`)
+
+### Environment variables
+
+| Variable | Status | Notes |
+|----------|--------|-------|
+| `JECP_AGENT_ID` | active | Agent ID (e.g. `jdb_ag_…`). |
+| `JECP_API_KEY` | active | Preferred name for the agent's API key. Matches the Hub's `X-API-Key` header convention. |
+| `JECP_AGENT_KEY` | **deprecated** | Legacy alias for `JECP_API_KEY`. Still honored, but emits a deprecation warning on stderr and will be **removed in v0.10**. |
+| `JECP_BASE_URL` | active | Override Hub URL (default `https://jecp.dev`). |
+| `JECP_PROVIDER_ID` / `JECP_PROVIDER_KEY` | active | Provider credentials, independent of agent credentials. |
+
+If both `JECP_API_KEY` and `JECP_AGENT_KEY` are set, `JECP_API_KEY` wins and
+no deprecation warning is emitted.
 
 ## Config file
 
@@ -122,9 +135,13 @@ jecp catalog --page-size 100 --namespace jobdonebot
 ### CI integration
 
 ```bash
-JECP_AGENT_ID=jdb_ag_... JECP_AGENT_KEY=jdb_ak_... \
+JECP_AGENT_ID=jdb_ag_... JECP_API_KEY=jdb_ak_... \
   jecp invoke a/b c --json | jq '.output'
 ```
+
+> `JECP_AGENT_KEY` is the legacy name and still works for one more
+> release; switch to `JECP_API_KEY` to avoid the deprecation warning.
+> The variable will be removed in v0.10.
 
 ## x402 quickstart (v0.7.0)
 

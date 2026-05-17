@@ -40,11 +40,11 @@ describe(`integration: cli catalog --json against ${HUB_BASE_URL}`, () => {
         // /v1/capabilities is public, so dummy creds are fine — the Hub
         // never validates them on a GET.
         env: {
-          // Note: CLI reads JECP_AGENT_KEY (not JECP_API_KEY) — see
-          // src/config.ts `resolveAuth()`. Dummy creds are fine here
-          // because /v1/capabilities is unauthenticated.
+          // Use JECP_API_KEY (preferred name as of v0.8.3). Dummy creds
+          // are fine here because /v1/capabilities is unauthenticated —
+          // the Hub never validates them on a GET to this endpoint.
           JECP_AGENT_ID: 'jdb_ag_dummy_for_integration_test',
-          JECP_AGENT_KEY: 'jdb_ak_dummy_for_integration_test',
+          JECP_API_KEY: 'jdb_ak_dummy_for_integration_test',
         },
       },
     );
