@@ -188,6 +188,29 @@ Locked design §6.2 — hybrid mode is the recommended default.
 > if you use `--pay x402`; otherwise the CLI falls back to wallet mode with a
 > clear hint.
 
+## Integration tests
+
+Default `npm test` runs hermetic unit tests only. An opt-in suite under
+`test/integration/` spawns the **built** `dist/cli.js` against a live
+JECP Hub to catch CLI/Hub contract drift:
+
+```bash
+# Always build first — integration tests run the compiled artifact.
+npm run build
+
+# Against the default staging Hub (https://setsuna-jobdonebot.fly.dev)
+npm run test:integration
+
+# Against a local Hub
+JECP_TEST_BASE_URL=http://localhost:8080 npm run test:integration
+
+# Against jecp.dev (production — coordinate first)
+JECP_TEST_BASE_URL=https://jecp.dev npm run test:integration
+```
+
+See [`test/integration/README.md`](./test/integration/README.md) for what
+each test asserts and how HOME is sandboxed in spawned children.
+
 ## License
 
 Apache 2.0 — Tufe Company Inc.

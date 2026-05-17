@@ -3,6 +3,17 @@
 All notable changes to `@jecpdev/cli` are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- `npm run test:integration` — opt-in suite under `test/integration/`
+  that spawns the built `dist/cli.js` against a live JECP Hub (default
+  `https://setsuna-jobdonebot.fly.dev`, override via
+  `JECP_TEST_BASE_URL`). Covers `--help` surface, `doctor --json`, and
+  `catalog --json`. Excluded from `npm test`. Requires `npm run build`
+  first. See [`test/integration/README.md`](./test/integration/README.md).
+
 ## [0.8.2] - 2026-05-16
 
 ### Added

@@ -19,6 +19,7 @@
   "scripts": {
     "build": "tsup src/cli.ts src/index.ts --format esm --dts --clean",
     "test": "vitest run --passWithNoTests",
+    "test:integration": "vitest run --config vitest.integration.config.ts --reporter verbose",
     "lint": "tsc --noEmit",
     "prepublishOnly": "npm run lint && npm run build"
   },
