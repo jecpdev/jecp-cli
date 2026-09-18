@@ -20,6 +20,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   15:00 JST) that runs `npm run test:integration` against the live Hub.
   **Non-blocking**: regressions surface as red Actions runs but do not
   gate PRs. The hermetic `npm test` suite remains the blocking gate.
+- `jecp catalog --cursor <cursor>` — resume from a previous page's
+  `next_cursor`. The pretty output already printed this hint, but the
+  option did not exist.
 
 ### Changed
 
@@ -31,6 +34,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   clear the package wasn't physically resolved. When neither lookup
   works, `sdk_version.detail` is `"SDK not found in tree"` instead of
   silent omission.
+
+### Fixed
+
+- `jecp catalog` no longer requires `jecp login` / `jecp register`. The
+  catalog is a public Hub endpoint; saved credentials are still used
+  when present, but a new user can now browse before signing up.
+- `package-lock.json` pinned `@jecpdev/sdk` to `file:../jecp-sdk-typescript`
+  (a local dev symlink), so `npm ci` on a clean checkout installed no SDK
+  and every daily integration run since 2026-05-18 failed. The lockfile
+  now resolves `@jecpdev/sdk@0.9.0` from the npm registry. The published
+  0.8.2 package was not affected (npm publish uses `package.json` ranges).
 
 ### Deprecated
 

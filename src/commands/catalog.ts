@@ -1,14 +1,15 @@
 import type { CatalogResponse } from '@jecpdev/sdk';
-import { getClient } from '../sdk.js';
+import { getPublicClient } from '../sdk.js';
 import { emit, info, bold, dim } from '../output.js';
 
 export async function catalogCmd(opts: {
   pageSize?: string;
+  cursor?: string;
   namespace?: string;
   tags?: string;
   all?: boolean;
 }) {
-  const jecp = getClient();
+  const jecp = getPublicClient();
 
   if (opts.all) {
     const result = await jecp.catalogAll();
@@ -19,6 +20,7 @@ export async function catalogCmd(opts: {
   const pageSize = opts.pageSize ? parseInt(opts.pageSize, 10) : 50;
   const result = await jecp.catalog({
     pageSize,
+    ...(opts.cursor && { cursor: opts.cursor }),
     ...(opts.namespace && { namespace: opts.namespace }),
     ...(opts.tags && { tags: opts.tags.split(',') }),
   });

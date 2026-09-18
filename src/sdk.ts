@@ -22,6 +22,21 @@ export function getClient(): JecpClient {
   });
 }
 
+/**
+ * Client for public, unauthenticated endpoints (catalog). Uses saved
+ * credentials when present; otherwise builds the client with placeholder
+ * credentials, which the SDK never sends on `authed: false` requests —
+ * so `jecp catalog` works before `jecp register`.
+ */
+export function getPublicClient(): JecpClient {
+  const { agentId, apiKey, baseUrl } = resolveAuth();
+  return new JecpClient({
+    agentId: agentId || 'anonymous',
+    apiKey: apiKey || 'anonymous',
+    ...(baseUrl && { baseUrl }),
+  });
+}
+
 export function getBaseUrl(): string {
   return resolveAuth().baseUrl ?? 'https://jecp.dev';
 }

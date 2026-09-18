@@ -78,6 +78,7 @@ program
   .command('catalog')
   .description('List capabilities (paginated by default)')
   .option('--page-size <n>', 'Items per page (1-200)', '50')
+  .option('--cursor <cursor>', 'Resume from a previous page\'s next_cursor')
   .option('--namespace <ns>', 'Filter by Provider namespace')
   .option('--tags <csv>', 'Comma-separated tag filter')
   .option('--all', 'Fetch all in legacy mode (?paginated=false)')
