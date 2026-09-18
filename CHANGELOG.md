@@ -37,6 +37,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `jecp register` no longer assumes 100 free calls. The Hub has dropped the
+  free tier; when the response carries no count the CLI now reports 0 and
+  omits the "Free calls" line. The README quickstart adds `jecp topup 5`
+  before the first invoke.
 - `jecp catalog` no longer requires `jecp login` / `jecp register`. The
   catalog is a public Hub endpoint; saved credentials are still used
   when present, but a new user can now browse before signing up.

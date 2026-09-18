@@ -20,9 +20,10 @@ $ jecp register --name MyBot --type demo
 
   AGENT_ID:   jdb_ag_a1b2c3...
   API_KEY:    jdb_ak_xxxxxxxxxxxx
-  Free calls: 100
 
 ✓ Credentials saved to ~/.jecp/config.json (mode 0600)
+
+$ jecp topup 5            # prints a Stripe Checkout URL; wallet credited after payment
 
 $ jecp invoke jobdonebot/content-factory translate \
     --input '{"text":"Hello","target_lang":"JA"}'
@@ -31,7 +32,7 @@ $ jecp invoke jobdonebot/content-factory translate \
   Output:      {"translated":"こんにちは"}
   Provider:    jobdonebot/content-factory@1.0.0
   Charged:     $0.005 USDC
-  Balance:     $0.995 USDC
+  Balance:     $4.995 USDC
 ```
 
 ## Quickstart — Provider in 30 minutes (v0.8.1+)

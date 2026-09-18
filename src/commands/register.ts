@@ -46,11 +46,11 @@ export async function registerCmd(opts: { name?: string; type?: string; descript
   const freeCalls =
     (reg as { free_calls_remaining?: number }).free_calls_remaining
     ?? (reg as { benefits?: { free_api_calls?: number } }).benefits?.free_api_calls
-    ?? 100;
+    ?? 0;
   info(bold('Credentials (api_key shown ONLY ONCE — store externally if you need it elsewhere):'));
   info(`  AGENT_ID:   ${reg.agent_id}`);
   info(`  API_KEY:    ${reg.api_key}`);
-  info(`  Free calls: ${freeCalls}`);
+  if (freeCalls > 0) info(`  Free calls: ${freeCalls}`);
   info('');
 
   // First-success suggestion — PM-identified friction: "capability_id を覚えていない"
